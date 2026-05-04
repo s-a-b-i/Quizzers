@@ -1,0 +1,9 @@
+node_modules
+quizzera/services/auth-service/.env
+**/.next
+**/out
+.env
+.env.local
+.env*.local
+npm-debug.log*
+*.log

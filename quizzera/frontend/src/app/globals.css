@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-background text-primary antialiased;
+}
+
+.auth-dot-grid {
+  background-color: theme('colors.primary');
+  background-image: radial-gradient(
+    circle,
+    theme('colors.dot') 1.25px,
+    transparent 1.25px
+  );
+  background-size: 28px 28px;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.22s ease-out both;
+}
+
+@keyframes loading-dot-bounce {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.loading-dot {
+  animation: loading-dot-bounce 0.9s ease-in-out infinite;
+}
+
+.loading-dot-delay-1 {
+  animation-delay: 0.12s;
+}
+
+.loading-dot-delay-2 {
+  animation-delay: 0.24s;
+}

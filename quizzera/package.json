@@ -1,0 +1,17 @@
+{
+  "name": "quizzera",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n auth,user,taxonomy,mcq,exam,gateway -c auto \"npm run auth\" \"npm run user\" \"npm run taxonomy\" \"npm run mcq\" \"npm run exam\" \"npm run gateway\"",
+    "auth": "nodemon --cwd services/auth-service src/index.js",
+    "user": "nodemon --cwd services/user-service src/index.js",
+    "taxonomy": "nodemon --cwd services/taxonomy-service src/index.js",
+    "mcq": "nodemon --cwd services/mcq-service src/index.js",
+    "exam": "nodemon --cwd services/exam-service src/index.js",
+    "gateway": "nodemon --cwd gateway src/index.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "nodemon": "^3.1.9"
+  }
+}

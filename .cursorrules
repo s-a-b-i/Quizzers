@@ -1,0 +1,13 @@
+This is QUIZZERA, a microservices EdTech platform.
+Stack: Node.js, Express, MongoDB, Firebase, Next.js.
+No Docker. Services run locally with concurrently and nodemon.
+MongoDB runs locally on mongodb://localhost:27017.
+Each service has its own database: quizzera_auth, quizzera_users, quizzera_taxonomy, quizzera_mcq, quizzera_exam.
+Ports: gateway=3000, auth=3001, user=3002, taxonomy=3003, mcq=3004, exam=3005.
+Node services use ES modules: package.json "type": "module", import/export, and include the .js extension in relative imports.
+Each service is fully independent with its own DB connection and its own PORT.
+Firebase handles identity only. MongoDB is the source of truth for role, plan, entitlement, accountStatus, onboardingCompleted.
+Never put business logic in routes. Always use controllers and a services layer.
+Always validate request body before hitting Firebase or MongoDB.
+Return consistent JSON: { success: true, data: {} } or { success: false, message: "" }.
+Theme: black and white only. #111111 text, #FFFFFF bg, #F9F9F9 cards, #E5E5E5 borders.
