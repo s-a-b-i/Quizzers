@@ -1,6 +1,8 @@
 import { Playfair_Display } from 'next/font/google';
 
+/** Brand display + auth page titles (Sign in, Create account, etc.) */
 export const displaySerif = Playfair_Display({
   subsets: ['latin'],
-  weight: ['700'],
+  weight: ['600', '700'],
+  display: 'swap',
 });

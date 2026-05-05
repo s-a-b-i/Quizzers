@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { displaySerif } from '@/lib/fonts';
 
 function greetingLabel() {
   const h = new Date().getHours();
@@ -68,7 +69,9 @@ export default function DashboardPage() {
       </header>
 
       <main className="mx-auto flex max-w-2xl flex-col items-center px-6 py-16 text-center">
-        <h1 className="break-words text-3xl font-bold leading-tight sm:text-4xl">
+        <h1
+          className={`${displaySerif.className} break-words text-3xl font-semibold leading-[1.15] tracking-[-0.02em] sm:text-4xl sm:font-bold`}
+        >
           {salute}, {user.email}
         </h1>
         <div className="mt-8">

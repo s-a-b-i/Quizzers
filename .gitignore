@@ -1,5 +1,4 @@
 node_modules
-quizzera/services/auth-service/.env
 **/.next
 **/out
 .env

@@ -30,27 +30,27 @@ export function AuthSplitLayout({ title, subtitle, children }) {
         </div>
       </aside>
 
-      <div className="relative flex min-h-screen w-full flex-1 flex-col justify-center bg-gradient-to-b from-background to-surface/40 px-5 py-12 sm:px-8 lg:w-1/2 lg:px-14">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-border/30 to-transparent sm:h-40" aria-hidden />
-
+      <div className="flex min-h-screen w-full flex-1 flex-col justify-center bg-background px-5 py-12 sm:px-8 lg:w-1/2 lg:px-14">
         <div className="relative mx-auto w-full max-w-[400px]">
           <div className="mb-10 text-center lg:hidden">
             <p className="text-[10px] font-semibold uppercase tracking-[0.4em] text-secondary">Quizzera</p>
-            <p className="mt-2 text-xl font-bold tracking-tight text-primary">QUIZZERA</p>
+            <p
+              className={`${displaySerif.className} mt-2 text-[1.65rem] font-bold leading-tight tracking-[-0.02em] text-primary`}
+            >
+              QUIZZERA
+            </p>
           </div>
 
-          <div className="rounded-[1.75rem] border border-border/90 bg-background/90 p-6 shadow-[0_20px_50px_-24px_rgba(17,17,17,0.18)] backdrop-blur-sm sm:p-8">
-            <h2 className="text-balance text-[26px] font-bold leading-tight tracking-tight text-primary sm:text-[28px]">
-              {title}
-            </h2>
-            <p className="mt-2 text-[13px] leading-relaxed text-secondary">{subtitle}</p>
+          <h2
+            className={`${displaySerif.className} text-balance text-[1.875rem] font-semibold leading-[1.2] tracking-[-0.02em] text-primary sm:text-[2.125rem] sm:font-bold`}
+          >
+            {title}
+          </h2>
+          <p className="mt-3 max-w-sm text-[14px] leading-relaxed text-secondary">{subtitle}</p>
 
-            <div className="mt-7 flex flex-col gap-5">{children}</div>
-          </div>
+          <div className="mt-8 flex flex-col gap-5">{children}</div>
 
-          <p className="mt-6 text-center text-[11px] text-secondary/90">
-            Secure sign-in · Your data stays yours
-          </p>
+          <p className="mt-8 text-center text-[11px] text-secondary/80">Secure sign-in · Your data stays yours</p>
         </div>
       </div>
     </div>
