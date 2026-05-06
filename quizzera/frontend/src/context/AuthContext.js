@@ -21,6 +21,7 @@ import {
   createUserWithEmailAndPassword,
   inMemoryPersistence,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -38,6 +39,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [role, setRole] = useState(null);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const syncMongoUser = useCallback(async (idToken) => {
@@ -46,6 +48,22 @@ export function AuthProvider({ children }) {
       throw new Error(data?.message || 'Sync failed');
     }
     setRole(data.data.role);
+  }, []);
+
+  const refreshUserProfile = useCallback(async (idToken) => {
+    await api.post(
+      '/api/users/bootstrap',
+      {},
+      { headers: { Authorization: `Bearer ${idToken}` } }
+    );
+    const { data } = await api.get('/api/users/me', {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    if (data?.success && data?.data?.user) {
+      setOnboardingCompleted(Boolean(data.data.user.onboardingCompleted));
+    } else {
+      setOnboardingCompleted(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -59,6 +77,7 @@ export function AuthProvider({ children }) {
           setUser(null);
           setToken(null);
           setRole(null);
+          setOnboardingCompleted(false);
           setLoading(false);
           return;
         }
@@ -68,8 +87,10 @@ export function AuthProvider({ children }) {
           const idToken = await u.getIdToken();
           setToken(idToken);
           await syncMongoUser(idToken);
+          await refreshUserProfile(idToken);
         } catch {
           setRole(null);
+          setOnboardingCompleted(false);
         } finally {
           setLoading(false);
         }
@@ -79,7 +100,7 @@ export function AuthProvider({ children }) {
     return () => {
       unsubscribe();
     };
-  }, [syncMongoUser]);
+  }, [syncMongoUser, refreshUserProfile]);
 
   const login = useCallback(async (email, password) => {
     const auth = getFirebaseAuth();
@@ -95,6 +116,17 @@ export function AuthProvider({ children }) {
   const register = useCallback(async (email, password) => {
     const auth = getFirebaseAuth();
     await createUserWithEmailAndPassword(auth, email, password);
+  }, []);
+
+  const sendPasswordReset = useCallback(async (email) => {
+    const trimmed = typeof email === 'string' ? email.trim() : '';
+    if (!trimmed) {
+      const err = new Error('Enter your email address.');
+      err.code = 'auth/missing-email';
+      throw err;
+    }
+    const auth = getFirebaseAuth();
+    await sendPasswordResetEmail(auth, trimmed);
   }, []);
 
   const logout = useCallback(async () => {
@@ -119,13 +151,29 @@ export function AuthProvider({ children }) {
       user,
       token,
       role,
+      onboardingCompleted,
+      setOnboardingCompleted,
       loading,
       login,
       loginWithGoogle,
       register,
+      sendPasswordReset,
       logout,
+      refreshUserProfile,
     }),
-    [user, token, role, loading, login, loginWithGoogle, register, logout]
+    [
+      user,
+      token,
+      role,
+      onboardingCompleted,
+      loading,
+      login,
+      loginWithGoogle,
+      register,
+      sendPasswordReset,
+      logout,
+      refreshUserProfile,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

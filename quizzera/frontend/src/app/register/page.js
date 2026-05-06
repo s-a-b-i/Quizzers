@@ -12,7 +12,7 @@ import { AuthDivider } from '@/components/auth/AuthDivider';
 import { LoadingDots } from '@/components/auth/LoadingDots';
 
 export default function RegisterPage() {
-  const { register, loginWithGoogle, user, loading } = useAuth();
+  const { register, loginWithGoogle, user, loading, onboardingCompleted } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,9 +22,9 @@ export default function RegisterPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace('/dashboard');
+      router.replace(onboardingCompleted ? '/dashboard' : '/onboarding');
     }
-  }, [loading, user, router]);
+  }, [loading, user, onboardingCompleted, router]);
 
   async function onSubmit(e) {
     e.preventDefault();

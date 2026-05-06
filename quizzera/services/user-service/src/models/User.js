@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 const { Schema } = mongoose;
 
-const ROLES = [
+export const USER_ROLES = [
   'guest',
   'student',
   'mentor',
@@ -12,9 +12,9 @@ const ROLES = [
   'financeManager',
 ];
 
-const ACCOUNT_STATUSES = ['active', 'suspended', 'inactive'];
+export const USER_ACCOUNT_STATUSES = ['active', 'suspended', 'inactive'];
 
-/** Auth DB (`quizzera_auth`): identity + role/accountStatus. Onboarding and preferences are user-service only (`quizzera_users`). */
+/** User profile DB (`quizzera_users`): onboarding, preferences, and profile fields. */
 const userSchema = new Schema(
   {
     firebaseUid: {
@@ -32,17 +32,29 @@ const userSchema = new Schema(
     },
     role: {
       type: String,
-      enum: ROLES,
+      enum: USER_ROLES,
       default: 'student',
     },
     accountStatus: {
       type: String,
-      enum: ACCOUNT_STATUSES,
+      enum: USER_ACCOUNT_STATUSES,
       default: 'active',
+    },
+    onboardingCompleted: {
+      type: Boolean,
+      default: false,
     },
     currentPlanId: {
       type: String,
       default: null,
+    },
+    preferences: {
+      type: Schema.Types.Mixed,
+      default: () => ({}),
+    },
+    activitySummary: {
+      type: Schema.Types.Mixed,
+      default: () => ({}),
     },
   },
   { timestamps: true }

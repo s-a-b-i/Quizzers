@@ -14,7 +14,7 @@ function greetingLabel() {
 }
 
 export default function DashboardPage() {
-  const { user, role, loading, logout } = useAuth();
+  const { user, role, loading, onboardingCompleted, logout } = useAuth();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -26,6 +26,12 @@ export default function DashboardPage() {
     }
   }, [loading, user, router]);
 
+  useEffect(() => {
+    if (!loading && user && onboardingCompleted === false) {
+      router.replace('/onboarding');
+    }
+  }, [loading, user, onboardingCompleted, router]);
+
   async function onLogout() {
     setBusy(true);
     try {
@@ -36,7 +42,7 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading || !user) {
+  if (loading || !user || onboardingCompleted === false) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background text-primary">
         <p className="text-sm text-secondary">Loading...</p>

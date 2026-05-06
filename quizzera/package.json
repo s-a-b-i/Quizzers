@@ -8,7 +8,7 @@
     "taxonomy": "nodemon --cwd services/taxonomy-service src/index.js",
     "mcq": "nodemon --cwd services/mcq-service src/index.js",
     "exam": "nodemon --cwd services/exam-service src/index.js",
-    "gateway": "nodemon --cwd gateway src/index.js"
+    "gateway": "nodemon --delay 750ms --cwd gateway src/index.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

@@ -1,3 +1,4 @@
+import './load-env.js';
 import express from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 
@@ -19,6 +20,7 @@ const routes = [
     target: process.env.AUTH_SERVICE_URL ?? 'http://localhost:3001',
     backendPrefix: '/auth',
   },
+  // e.g. GET http://localhost:3000/api/users/me → GET http://localhost:3002/users/me
   {
     mount: '/api/users',
     target: process.env.USER_SERVICE_URL ?? 'http://localhost:3002',
@@ -52,6 +54,13 @@ for (const { mount, target, backendPrefix } of routes) {
   );
 }
 
-app.listen(Number(PORT), () => {
+const server = app.listen(Number(PORT), () => {
   console.log(`gateway listening on port ${PORT}`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`gateway: port ${PORT} already in use (another gateway or stale nodemon child)`);
+    process.exit(1);
+  }
 });

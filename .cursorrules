@@ -6,7 +6,7 @@ Each service has its own database: quizzera_auth, quizzera_users, quizzera_taxon
 Ports: gateway=3000, auth=3001, user=3002, taxonomy=3003, mcq=3004, exam=3005.
 Node services use ES modules: package.json "type": "module", import/export, and include the .js extension in relative imports.
 Each service is fully independent with its own DB connection and its own PORT.
-Firebase handles identity only. MongoDB is the source of truth for role, plan, entitlement, accountStatus, onboardingCompleted.
+Firebase handles identity only. MongoDB is the source of truth for role, plan, entitlement, accountStatus. onboardingCompleted and user preferences exist only in quizzera_users (user-service), not in quizzera_auth.
 Never put business logic in routes. Always use controllers and a services layer.
 Always validate request body before hitting Firebase or MongoDB.
 Return consistent JSON: { success: true, data: {} } or { success: false, message: "" }.

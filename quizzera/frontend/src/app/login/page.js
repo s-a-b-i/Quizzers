@@ -12,7 +12,7 @@ import { AuthDivider } from '@/components/auth/AuthDivider';
 import { LoadingDots } from '@/components/auth/LoadingDots';
 
 export default function LoginPage() {
-  const { login, loginWithGoogle, user, loading } = useAuth();
+  const { login, loginWithGoogle, user, loading, onboardingCompleted } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,9 +21,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace('/dashboard');
+      router.replace(onboardingCompleted ? '/dashboard' : '/onboarding');
     }
-  }, [loading, user, router]);
+  }, [loading, user, onboardingCompleted, router]);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -77,13 +77,12 @@ export default function LoginPage() {
             error={error}
           />
           <div className="flex justify-end">
-            <a
-              href="#"
+            <Link
+              href="/forgot-password"
               className="rounded-full px-2 py-1 text-xs font-medium text-secondary transition-colors hover:bg-surface hover:text-primary"
-              onClick={(e) => e.preventDefault()}
             >
               Forgot password?
-            </a>
+            </Link>
           </div>
           <button
             type="submit"
