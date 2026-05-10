@@ -1,8 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { AuthSplitLayout } from '@/components/auth/AuthSplitLayout';
 import { FloatingInput } from '@/components/auth/FloatingInput';
@@ -12,18 +11,11 @@ import { AuthDivider } from '@/components/auth/AuthDivider';
 import { LoadingDots } from '@/components/auth/LoadingDots';
 
 export default function LoginPage() {
-  const { login, loginWithGoogle, user, loading, onboardingCompleted } = useAuth();
-  const router = useRouter();
+  const { login, loginWithGoogle, user, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!loading && user) {
-      router.replace(onboardingCompleted ? '/dashboard' : '/onboarding');
-    }
-  }, [loading, user, onboardingCompleted, router]);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -31,7 +23,6 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await login(email, password);
-      router.push('/dashboard');
     } catch (err) {
       setError(err?.message || 'Sign in failed.');
     } finally {
@@ -44,12 +35,19 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await loginWithGoogle();
-      router.push('/dashboard');
     } catch (err) {
       setError(err?.message || 'Google sign-in failed.');
     } finally {
       setBusy(false);
     }
+  }
+
+  if (user && loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background text-primary">
+        <LoadingDots />
+      </main>
+    );
   }
 
   if (!loading && user) {

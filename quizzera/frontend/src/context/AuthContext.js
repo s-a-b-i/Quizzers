@@ -18,8 +18,8 @@ import {
 import axios from 'axios';
 import {
   GoogleAuthProvider,
+  browserLocalPersistence,
   createUserWithEmailAndPassword,
-  inMemoryPersistence,
   onAuthStateChanged,
   sendPasswordResetEmail,
   setPersistence,
@@ -27,18 +27,33 @@ import {
   signInWithPopup,
   signOut,
 } from 'firebase/auth';
+import { usePathname, useRouter } from 'next/navigation';
 import { getFirebaseAuth } from '@/lib/firebase';
 
 const AuthContext = createContext(null);
+
+/** Paths where we send users after Firebase sign-in once Mongo profile is loaded. */
+const POST_SIGN_IN_PATHS = new Set(['/login', '/register', '/']);
+
+export function destinationAfterProfile(role, onboardingDone) {
+  if (!onboardingDone) return '/onboarding';
+  if (role === 'admin' || role === 'superAdmin') return '/admin/users';
+  return '/dashboard';
+}
 
 const api = axios.create({
   baseURL: '',
 });
 
 export function AuthProvider({ children }) {
+  const router = useRouter();
+  const pathname = usePathname();
+
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [role, setRole] = useState(null);
+  /** Full Mongo user from GET /api/users/me (source of truth for profile, onboarding, accountStatus). */
+  const [mongoUser, setMongoUser] = useState(null);
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -60,10 +75,17 @@ export function AuthProvider({ children }) {
       headers: { Authorization: `Bearer ${idToken}` },
     });
     if (data?.success && data?.data?.user) {
-      setOnboardingCompleted(Boolean(data.data.user.onboardingCompleted));
-    } else {
-      setOnboardingCompleted(false);
+      const doc = data.data.user;
+      const onboardingDone = Boolean(doc.onboardingCompleted);
+      const nextRole = typeof doc.role === 'string' ? doc.role : null;
+      setMongoUser(doc);
+      setOnboardingCompleted(onboardingDone);
+      if (nextRole) setRole(nextRole);
+      return { role: nextRole, onboardingCompleted: onboardingDone };
     }
+    setMongoUser(null);
+    setOnboardingCompleted(false);
+    return null;
   }, []);
 
   useEffect(() => {
@@ -71,12 +93,14 @@ export function AuthProvider({ children }) {
     let unsubscribe = () => {};
 
     (async () => {
-      await setPersistence(auth, inMemoryPersistence);
+      // Persist session across full page reloads (inMemory clears on refresh → false “logout”).
+      await setPersistence(auth, browserLocalPersistence);
       unsubscribe = onAuthStateChanged(auth, async (u) => {
         if (!u) {
           setUser(null);
           setToken(null);
           setRole(null);
+          setMongoUser(null);
           setOnboardingCompleted(false);
           setLoading(false);
           return;
@@ -90,6 +114,7 @@ export function AuthProvider({ children }) {
           await refreshUserProfile(idToken);
         } catch {
           setRole(null);
+          setMongoUser(null);
           setOnboardingCompleted(false);
         } finally {
           setLoading(false);
@@ -101,6 +126,20 @@ export function AuthProvider({ children }) {
       unsubscribe();
     };
   }, [syncMongoUser, refreshUserProfile]);
+
+  useEffect(() => {
+    if (loading || !user || !mongoUser) return;
+    if (!pathname || !POST_SIGN_IN_PATHS.has(pathname)) return;
+    router.replace(destinationAfterProfile(role, onboardingCompleted));
+  }, [
+    loading,
+    user,
+    mongoUser,
+    pathname,
+    role,
+    onboardingCompleted,
+    router,
+  ]);
 
   const login = useCallback(async (email, password) => {
     const auth = getFirebaseAuth();
@@ -151,6 +190,8 @@ export function AuthProvider({ children }) {
       user,
       token,
       role,
+      mongoUser,
+      setMongoUser,
       onboardingCompleted,
       setOnboardingCompleted,
       loading,
@@ -165,6 +206,7 @@ export function AuthProvider({ children }) {
       user,
       token,
       role,
+      mongoUser,
       onboardingCompleted,
       loading,
       login,

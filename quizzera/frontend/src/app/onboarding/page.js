@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { getFirebaseAuth } from '@/lib/firebase';
-import { useAuth } from '@/context/AuthContext';
+import { destinationAfterProfile, useAuth } from '@/context/AuthContext';
 import { OnboardingStepIndicator } from '@/components/onboarding/OnboardingStepIndicator';
 import { displaySerif } from '@/lib/fonts';
 import {
@@ -22,7 +22,13 @@ const api = axios.create({ baseURL: '' });
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { user, loading, onboardingCompleted, setOnboardingCompleted } = useAuth();
+  const {
+    user,
+    loading,
+    onboardingCompleted,
+    refreshUserProfile,
+    role,
+  } = useAuth();
 
   const [step, setStep] = useState(1);
   const [targetExamId, setTargetExamId] = useState('');
@@ -42,9 +48,9 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     if (!loading && user && onboardingCompleted) {
-      router.replace('/dashboard');
+      router.replace(destinationAfterProfile(role, onboardingCompleted));
     }
-  }, [loading, user, onboardingCompleted, router]);
+  }, [loading, user, onboardingCompleted, role, router]);
 
   const toggleWeak = useCallback((tag) => {
     setWeakAreas((prev) =>
@@ -132,8 +138,12 @@ export default function OnboardingPage() {
         throw new Error(data?.message || 'Could not complete onboarding.');
       }
 
-      setOnboardingCompleted(true);
-      router.replace('/dashboard');
+      const profile = await refreshUserProfile(idToken);
+      router.replace(
+        profile
+          ? destinationAfterProfile(profile.role, profile.onboardingCompleted)
+          : '/dashboard'
+      );
     } catch (e) {
       setError(e?.response?.data?.message || e?.message || 'Something went wrong.');
     } finally {
