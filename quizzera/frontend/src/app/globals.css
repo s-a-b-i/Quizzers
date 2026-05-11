@@ -55,3 +55,60 @@ body {
 .loading-dot-delay-2 {
   animation-delay: 0.24s;
 }
+
+/* Full-page loader + button loader dots (sequential fade, 200ms stagger) */
+@keyframes page-loader-dot-fade {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  33% {
+    opacity: 1;
+  }
+  66% {
+    opacity: 0.2;
+  }
+}
+
+.page-loader-dot {
+  animation: page-loader-dot-fade 1.2s ease-in-out infinite;
+}
+
+.page-loader-dot-delay-1 {
+  animation-delay: 200ms;
+}
+
+.page-loader-dot-delay-2 {
+  animation-delay: 400ms;
+}
+
+.button-loader-dot-light {
+  animation: page-loader-dot-fade 1.2s ease-in-out infinite;
+}
+
+.button-loader-dot-dark {
+  animation: page-loader-dot-fade 1.2s ease-in-out infinite;
+}
+
+.button-loader-dot-delay-1 {
+  animation-delay: 200ms;
+}
+
+.button-loader-dot-delay-2 {
+  animation-delay: 400ms;
+}
+
+@keyframes skeleton-shimmer-move {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #f5f5f5 0%, #e5e5e5 50%, #f5f5f5 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer-move 1.5s ease-in-out infinite;
+}

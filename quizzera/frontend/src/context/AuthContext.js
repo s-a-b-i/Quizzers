@@ -12,10 +12,11 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
-import axios from 'axios';
 import {
   GoogleAuthProvider,
   browserLocalPersistence,
@@ -29,8 +30,22 @@ import {
 } from 'firebase/auth';
 import { usePathname, useRouter } from 'next/navigation';
 import { getFirebaseAuth } from '@/lib/firebase';
+import { PageLoader } from '@/components/ui/PageLoader';
+import {
+  apiGet,
+  apiPost,
+  registerApiAuth,
+} from '@/lib/api';
 
 const AuthContext = createContext(null);
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+  return ctx;
+}
 
 /** Paths where we send users after Firebase sign-in once Mongo profile is loaded. */
 const POST_SIGN_IN_PATHS = new Set(['/login', '/register', '/']);
@@ -41,13 +56,50 @@ export function destinationAfterProfile(role, onboardingDone) {
   return '/dashboard';
 }
 
-const api = axios.create({
-  baseURL: '',
-});
+function AuthLoadingShell({ children }) {
+  const { loading } = useAuth();
+  const pathname = usePathname();
+  const [navOverlay, setNavOverlay] = useState(false);
+  const prevPathRef = useRef(null);
+
+  useEffect(() => {
+    if (loading) {
+      setNavOverlay(false);
+    }
+  }, [loading]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (prevPathRef.current === null) {
+      prevPathRef.current = pathname;
+      return;
+    }
+    if (prevPathRef.current !== pathname) {
+      prevPathRef.current = pathname;
+      setNavOverlay(true);
+      const id = setTimeout(() => setNavOverlay(false), 200);
+      return () => clearTimeout(id);
+    }
+  }, [pathname, loading]);
+
+  if (loading) {
+    return <PageLoader />;
+  }
+
+  return (
+    <>
+      {navOverlay ? <PageLoader /> : null}
+      {children}
+    </>
+  );
+}
 
 export function AuthProvider({ children }) {
   const router = useRouter();
   const pathname = usePathname();
+
+  const tokenRef = useRef(null);
+  const logoutRef = useRef(async () => {});
 
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
@@ -58,7 +110,11 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const syncMongoUser = useCallback(async (idToken) => {
-    const { data } = await api.post('/api/auth/google', { idToken });
+    const { data } = await apiPost(
+      '/api/auth/google',
+      { idToken },
+      { skipAuthHeader: true }
+    );
     if (!data?.success) {
       throw new Error(data?.message || 'Sync failed');
     }
@@ -66,14 +122,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   const refreshUserProfile = useCallback(async (idToken) => {
-    await api.post(
-      '/api/users/bootstrap',
-      {},
-      { headers: { Authorization: `Bearer ${idToken}` } }
-    );
-    const { data } = await api.get('/api/users/me', {
-      headers: { Authorization: `Bearer ${idToken}` },
-    });
+    tokenRef.current = idToken;
+    await apiPost('/api/users/bootstrap', {});
+    const { data } = await apiGet('/api/users/me');
     if (data?.success && data?.data?.user) {
       const doc = data.data.user;
       const onboardingDone = Boolean(doc.onboardingCompleted);
@@ -88,15 +139,51 @@ export function AuthProvider({ children }) {
     return null;
   }, []);
 
+  /** Sync ref used by `lib/api` interceptors after `getIdToken(true)` (token may differ from React state). */
+  const primeApiToken = useCallback((idToken) => {
+    tokenRef.current = idToken ?? null;
+  }, []);
+
+  const logout = useCallback(async () => {
+    const auth = getFirebaseAuth();
+    let idToken = null;
+    try {
+      idToken = await auth.currentUser?.getIdToken();
+    } catch {
+      idToken = null;
+    }
+    if (idToken) {
+      tokenRef.current = idToken;
+      try {
+        await apiPost('/api/auth/logout', {}, { skip401Logout: true });
+      } catch {
+        /* still sign out locally */
+      }
+    }
+    tokenRef.current = null;
+    await signOut(auth);
+  }, []);
+
+  logoutRef.current = logout;
+
+  useLayoutEffect(() => {
+    registerApiAuth({
+      getAccessToken: () => tokenRef.current,
+      onUnauthorized: async () => {
+        await logoutRef.current?.();
+      },
+    });
+  }, []);
+
   useEffect(() => {
     const auth = getFirebaseAuth();
     let unsubscribe = () => {};
 
     (async () => {
-      // Persist session across full page reloads (inMemory clears on refresh → false “logout”).
       await setPersistence(auth, browserLocalPersistence);
       unsubscribe = onAuthStateChanged(auth, async (u) => {
         if (!u) {
+          tokenRef.current = null;
           setUser(null);
           setToken(null);
           setRole(null);
@@ -109,6 +196,7 @@ export function AuthProvider({ children }) {
         setLoading(true);
         try {
           const idToken = await u.getIdToken();
+          tokenRef.current = idToken;
           setToken(idToken);
           await syncMongoUser(idToken);
           await refreshUserProfile(idToken);
@@ -168,23 +256,6 @@ export function AuthProvider({ children }) {
     await sendPasswordResetEmail(auth, trimmed);
   }, []);
 
-  const logout = useCallback(async () => {
-    const auth = getFirebaseAuth();
-    const idToken = await auth.currentUser?.getIdToken();
-    if (idToken) {
-      try {
-        await api.post(
-          '/api/auth/logout',
-          {},
-          { headers: { Authorization: `Bearer ${idToken}` } }
-        );
-      } catch {
-        /* still sign out locally */
-      }
-    }
-    await signOut(auth);
-  }, []);
-
   const value = useMemo(
     () => ({
       user,
@@ -201,6 +272,7 @@ export function AuthProvider({ children }) {
       sendPasswordReset,
       logout,
       refreshUserProfile,
+      primeApiToken,
     }),
     [
       user,
@@ -215,16 +287,13 @@ export function AuthProvider({ children }) {
       sendPasswordReset,
       logout,
       refreshUserProfile,
+      primeApiToken,
     ]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return ctx;
+  return (
+    <AuthContext.Provider value={value}>
+      <AuthLoadingShell>{children}</AuthLoadingShell>
+    </AuthContext.Provider>
+  );
 }

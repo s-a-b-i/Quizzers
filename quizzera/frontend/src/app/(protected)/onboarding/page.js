@@ -1,11 +1,11 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import axios from 'axios';
 import { getFirebaseAuth } from '@/lib/firebase';
+import { apiPatch } from '@/lib/api';
 import { destinationAfterProfile, useAuth } from '@/context/AuthContext';
+import { PageLoader } from '@/components/ui/PageLoader';
 import { OnboardingStepIndicator } from '@/components/onboarding/OnboardingStepIndicator';
 import { displaySerif } from '@/lib/fonts';
 import {
@@ -18,8 +18,6 @@ import {
 
 const TOTAL_STEPS = 5;
 
-const api = axios.create({ baseURL: '' });
-
 export default function OnboardingPage() {
   const router = useRouter();
   const {
@@ -27,6 +25,7 @@ export default function OnboardingPage() {
     loading,
     onboardingCompleted,
     refreshUserProfile,
+    primeApiToken,
     role,
   } = useAuth();
 
@@ -39,12 +38,6 @@ export default function OnboardingPage() {
   const [timeline, setTimeline] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace('/login');
-    }
-  }, [loading, user, router]);
 
   useEffect(() => {
     if (!loading && user && onboardingCompleted) {
@@ -112,6 +105,7 @@ export default function OnboardingPage() {
     setError('');
     try {
       const idToken = await getBearer();
+      primeApiToken(idToken);
       const onboardingPayload = {
         targetExamId,
         academicNotes: academicNotes.trim(),
@@ -122,17 +116,13 @@ export default function OnboardingPage() {
         finishedAt: new Date().toISOString(),
       };
 
-      await api.patch(
-        '/api/users/me',
-        { preferences: { onboarding: onboardingPayload } },
-        { headers: { Authorization: `Bearer ${idToken}` } }
-      );
+      await apiPatch('/api/users/me', {
+        preferences: { onboarding: onboardingPayload },
+      });
 
-      const { data } = await api.patch(
-        '/api/users/me/onboarding',
-        { onboardingCompleted: true },
-        { headers: { Authorization: `Bearer ${idToken}` } }
-      );
+      const { data } = await apiPatch('/api/users/me/onboarding', {
+        onboardingCompleted: true,
+      });
 
       if (!data?.success) {
         throw new Error(data?.message || 'Could not complete onboarding.');
@@ -152,24 +142,11 @@ export default function OnboardingPage() {
   }
 
   if (loading || !user || onboardingCompleted) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-primary">
-        <p className="text-sm text-secondary">Loading...</p>
-      </main>
-    );
+    return <PageLoader />;
   }
 
   return (
     <div className="min-h-screen bg-background text-primary">
-      <header className="flex items-center justify-between px-5 py-4 sm:px-8">
-        <Link
-          href="/dashboard"
-          className="text-[10px] font-semibold uppercase tracking-[0.35em] text-secondary hover:text-primary"
-        >
-          QUIZZERA
-        </Link>
-      </header>
-
       <main className="mx-auto max-w-lg px-5 pb-16 pt-6 sm:px-8">
         <OnboardingStepIndicator currentStep={step} totalSteps={TOTAL_STEPS} />
 

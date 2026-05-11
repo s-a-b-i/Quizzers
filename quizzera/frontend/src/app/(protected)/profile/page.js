@@ -1,14 +1,11 @@
 'use client';
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import axios from 'axios';
-import { getFirebaseAuth } from '@/lib/firebase';
+import { apiGet, apiPatch } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { displaySerif } from '@/lib/fonts';
-
-const api = axios.create({ baseURL: '' });
+import { PageLoader } from '@/components/ui/PageLoader';
+import { SectionLoader } from '@/components/ui/SectionLoader';
 
 const inputClass =
   'h-[52px] w-full rounded-full border border-border bg-background px-5 text-sm text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition-[border-color,box-shadow] focus:border-primary focus:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_0_0_3px_rgba(17,17,17,0.06)] focus:ring-0';
@@ -86,15 +83,7 @@ function deepMergePreferences(target, source) {
   return target;
 }
 
-async function getBearer() {
-  const auth = getFirebaseAuth();
-  const u = auth.currentUser;
-  if (!u) throw new Error('Not signed in.');
-  return u.getIdToken(true);
-}
-
 export default function ProfilePage() {
-  const router = useRouter();
   const { user: fbUser, loading: authLoading } = useAuth();
 
   const [me, setMe] = useState(null);
@@ -105,21 +94,12 @@ export default function ProfilePage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [fetching, setFetching] = useState(true);
 
-  useEffect(() => {
-    if (!authLoading && !fbUser) {
-      router.replace('/login');
-    }
-  }, [authLoading, fbUser, router]);
-
   const loadProfile = useCallback(async () => {
     if (!fbUser) return;
     setLoadError('');
     setFetching(true);
     try {
-      const idToken = await getBearer();
-      const { data } = await api.get('/api/users/me', {
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
+      const { data } = await apiGet('/api/users/me');
       if (!data?.success || !data?.data?.user) {
         throw new Error(data?.message || 'Could not load profile.');
       }
@@ -167,18 +147,13 @@ export default function ProfilePage() {
     setSavedFlash(false);
     setSaving(true);
     try {
-      const idToken = await getBearer();
       const partial = unflattenPreferenceRows(prefRows);
       const base =
         me?.preferences && typeof me.preferences === 'object'
           ? structuredClone(me.preferences)
           : {};
       const preferences = deepMergePreferences(base, partial);
-      const { data } = await api.patch(
-        '/api/users/me',
-        { preferences },
-        { headers: { Authorization: `Bearer ${idToken}` } }
-      );
+      const { data } = await apiPatch('/api/users/me', { preferences });
       if (!data?.success || !data?.data?.user) {
         throw new Error(data?.message || 'Save failed.');
       }
@@ -196,11 +171,7 @@ export default function ProfilePage() {
   }
 
   if (authLoading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-primary">
-        <p className="text-sm text-secondary">Loading...</p>
-      </main>
-    );
+    return <PageLoader />;
   }
 
   if (!fbUser) {
@@ -209,18 +180,6 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-background text-primary">
-      <header className="flex items-center justify-between border-b border-border px-5 py-4 sm:px-8">
-        <Link
-          href="/dashboard"
-          className="text-[10px] font-semibold uppercase tracking-[0.35em] text-secondary hover:text-primary"
-        >
-          QUIZZERA
-        </Link>
-        <Link href="/dashboard" className="text-sm text-secondary hover:text-primary">
-          Dashboard
-        </Link>
-      </header>
-
       <main className="mx-auto max-w-[600px] px-5 py-10 sm:px-8">
         <h1
           className={`${displaySerif.className} text-center text-2xl font-semibold tracking-[-0.02em] text-primary sm:text-[1.75rem]`}
@@ -228,9 +187,7 @@ export default function ProfilePage() {
           Profile
         </h1>
 
-        {fetching ? (
-          <p className="mt-10 text-center text-sm text-secondary">Loading profile…</p>
-        ) : null}
+        {fetching ? <SectionLoader /> : null}
 
         {loadError ? (
           <p className="mt-6 text-center text-sm text-primary" role="alert">

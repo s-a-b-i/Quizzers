@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { AuthSplitLayout } from '@/components/auth/AuthSplitLayout';
 import { FloatingInput } from '@/components/auth/FloatingInput';
-import { LoadingDots } from '@/components/auth/LoadingDots';
+import { ButtonLoader } from '@/components/ui/ButtonLoader';
 
 function mapFirebaseAuthMessage(err) {
   const code = err?.code;
@@ -82,7 +82,7 @@ export default function ForgotPasswordPage() {
             className="flex h-[52px] w-full items-center justify-center rounded-full bg-primary text-sm font-semibold tracking-wide text-inverse shadow-sm transition-all hover:bg-primary-hover hover:shadow-md active:scale-[0.99] disabled:opacity-60"
             style={{ letterSpacing: '0.5px' }}
           >
-            {busy ? <LoadingDots /> : 'Send reset link'}
+            {busy ? <ButtonLoader /> : 'Send reset link'}
           </button>
         </form>
 

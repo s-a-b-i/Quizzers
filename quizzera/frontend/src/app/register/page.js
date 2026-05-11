@@ -8,7 +8,7 @@ import { FloatingInput } from '@/components/auth/FloatingInput';
 import { PasswordFloatingInput } from '@/components/auth/PasswordFloatingInput';
 import { GoogleGIcon } from '@/components/auth/GoogleGIcon';
 import { AuthDivider } from '@/components/auth/AuthDivider';
-import { LoadingDots } from '@/components/auth/LoadingDots';
+import { ButtonLoader } from '@/components/ui/ButtonLoader';
 
 export default function RegisterPage() {
   const { register, loginWithGoogle, user, loading } = useAuth();
@@ -49,14 +49,6 @@ export default function RegisterPage() {
     } finally {
       setBusy(false);
     }
-  }
-
-  if (user && loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-primary">
-        <LoadingDots />
-      </main>
-    );
   }
 
   if (!loading && user) {
@@ -101,7 +93,7 @@ export default function RegisterPage() {
             className="flex h-[52px] w-full items-center justify-center rounded-full bg-primary text-sm font-semibold tracking-wide text-inverse shadow-sm transition-all hover:bg-primary-hover hover:shadow-md active:scale-[0.99] disabled:opacity-60"
             style={{ letterSpacing: '0.5px' }}
           >
-            {busy ? <LoadingDots /> : 'Create account'}
+            {busy ? <ButtonLoader /> : 'Create account'}
           </button>
         </form>
 

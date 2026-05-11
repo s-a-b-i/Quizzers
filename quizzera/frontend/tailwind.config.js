@@ -6,6 +6,7 @@ module.exports = {
     './src/app/**/*.{js,jsx}',
     './src/components/**/*.{js,jsx}',
     './src/context/**/*.{js,jsx}',
+    './src/hooks/**/*.{js,jsx}',
     './src/lib/**/*.{js,jsx}',
     './src/theme/**/*.js',
   ],

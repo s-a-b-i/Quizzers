@@ -1,13 +1,11 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import axios from 'axios';
-import { getFirebaseAuth } from '@/lib/firebase';
+import { apiGet, apiPatch } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-
-const api = axios.create({ baseURL: '' });
+import { PageLoader } from '@/components/ui/PageLoader';
+import { SectionLoader } from '@/components/ui/SectionLoader';
 
 const USER_ROLES = [
   'guest',
@@ -23,13 +21,6 @@ const ACCOUNT_STATUSES = ['active', 'suspended', 'inactive'];
 
 const selectClass =
   'h-[52px] w-full min-w-[8.5rem] rounded-full border border-border bg-background px-4 text-sm text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition-[border-color,box-shadow] focus:border-primary focus:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_0_0_3px_rgba(17,17,17,0.06)]';
-
-async function getBearer() {
-  const auth = getFirebaseAuth();
-  const u = auth.currentUser;
-  if (!u) throw new Error('Not signed in.');
-  return u.getIdToken(true);
-}
 
 function isElevatedRole(role) {
   return role === 'admin' || role === 'superAdmin';
@@ -64,12 +55,6 @@ export default function AdminUsersPage() {
   }, []);
 
   useEffect(() => {
-    if (!authLoading && !fbUser) {
-      router.replace('/login');
-    }
-  }, [authLoading, fbUser, router]);
-
-  useEffect(() => {
     if (!authLoading && fbUser && mongoUser && !isAdmin) {
       router.replace('/dashboard');
     }
@@ -80,17 +65,14 @@ export default function AdminUsersPage() {
     setLoadError('');
     setFetching(true);
     try {
-      const idToken = await getBearer();
-      const { data } = await api.get('/api/users', {
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
+      const { data } = await apiGet('/api/users');
       if (!data?.success || !Array.isArray(data?.data?.users)) {
         throw new Error(data?.message || 'Could not load users.');
       }
       setUsers(data.data.users);
     } catch (e) {
       const status = e?.response?.status;
-      if (status === 401 || status === 403) {
+      if (status === 403) {
         router.replace('/dashboard');
         return;
       }
@@ -116,10 +98,7 @@ export default function AdminUsersPage() {
   async function patchUser(userId, body, busyKey) {
     setBusy(userId, busyKey, true);
     try {
-      const idToken = await getBearer();
-      const { data } = await api.patch(`/api/users/${userId}`, body, {
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
+      const { data } = await apiPatch(`/api/users/${userId}`, body);
       if (!data?.success || !data?.data?.user) {
         throw new Error(data?.message || 'Update failed.');
       }
@@ -127,7 +106,7 @@ export default function AdminUsersPage() {
       setUsers((prev) => prev.map((u) => (String(u._id) === String(userId) ? { ...u, ...updated } : u)));
     } catch (e) {
       const status = e?.response?.status;
-      if (status === 401 || status === 403) {
+      if (status === 403) {
         router.replace('/dashboard');
         return;
       }
@@ -139,43 +118,19 @@ export default function AdminUsersPage() {
   }
 
   if (authLoading || !fbUser) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-primary">
-        <p className="text-sm text-secondary">Loading...</p>
-      </main>
-    );
+    return <PageLoader />;
   }
 
   if (!mongoUser) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-primary">
-        <p className="text-sm text-secondary">Loading profile…</p>
-      </main>
-    );
+    return <PageLoader />;
   }
 
   if (!isAdmin) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-primary">
-        <p className="text-sm text-secondary">Redirecting…</p>
-      </main>
-    );
+    return <PageLoader />;
   }
 
   return (
     <div className="min-h-screen bg-background text-primary">
-      <header className="flex items-center justify-between border-b border-[#E5E5E5] px-5 py-4 sm:px-8">
-        <Link
-          href="/dashboard"
-          className="text-[10px] font-semibold uppercase tracking-[0.35em] text-secondary hover:text-primary"
-        >
-          QUIZZERA
-        </Link>
-        <Link href="/dashboard" className="text-sm text-secondary hover:text-primary">
-          Dashboard
-        </Link>
-      </header>
-
       <main className="mx-auto max-w-5xl px-5 py-8 sm:px-8">
         <h1 className="text-xl font-semibold tracking-tight text-primary">Users</h1>
         <p className="mt-1 text-sm text-secondary">Manage roles and account status.</p>
@@ -201,7 +156,7 @@ export default function AdminUsersPage() {
         ) : null}
 
         {fetching ? (
-          <p className="mt-8 text-sm text-secondary">Loading users…</p>
+          <SectionLoader />
         ) : (
           <div className="mt-8 overflow-x-auto rounded-sm border border-[#E5E5E5]">
             <table className="w-full min-w-[720px] border-collapse text-left text-sm">
