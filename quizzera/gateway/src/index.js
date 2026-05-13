@@ -11,8 +11,21 @@ app.get('/health', (req, res) => {
 });
 
 /**
+ * MCQ internal routes are not proxied. `/api/mcqs/internal/*` must not reach mcq-service
+ * through the gateway (exam-service calls mcq-service directly).
+ */
+app.use('/api/mcqs/internal', (_req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Not found.',
+  });
+});
+
+/**
  * Mount targets strip the gateway prefix; pathRewrite maps the remainder onto each
  * service’s expected base path (e.g. auth-service serves `/auth`).
+ *
+ * MCQ: `GET /api/mcqs/foo` → `GET http://localhost:3004/mcqs/foo` (pathRewrite: `/mcqs` + remainder).
  */
 const routes = [
   {

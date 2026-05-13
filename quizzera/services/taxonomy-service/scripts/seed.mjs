@@ -5,8 +5,12 @@
  * Clears all ExamBody, ExamType, Subject, Topic, and Subtopic documents, then seeds:
  * 2 exam bodies (PPSC, FPSC) → 2 exam types each → 3 subjects each type →
  * 2 topics per subject → 2 subtopics per topic.
+ *
+ * Also writes `scripts/taxonomy-ids-for-mcq.json` (placements with subject/topic/subtopic
+ * and exam body/type ids) for `mcq-service/scripts/seed.mjs`.
  */
 import path from 'node:path';
+import { writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
@@ -51,6 +55,8 @@ async function main() {
   let subjects = 0;
   let topics = 0;
   let subtopics = 0;
+  /** For mcq-service/scripts/seed.mjs — subject/topic/subtopic + exam IDs. */
+  const placements = [];
 
   for (const spec of BODY_SPECS) {
     const body = await ExamBody.create({
@@ -93,13 +99,23 @@ async function main() {
           topics += 1;
 
           for (let st = 1; st <= 2; st += 1) {
-            await Subtopic.create({
+            const sub = await Subtopic.create({
               name: `${topic.name} — Subtopic ${st}`,
               topicId: topic._id,
               description: '',
               weightage: 1,
               syllabusItem: '',
               tags: ['seed'],
+            });
+            placements.push({
+              subjectId: String(subject._id),
+              topicId: String(topic._id),
+              subtopicId: String(sub._id),
+              examBodyId: String(body._id),
+              examTypeId: String(examType._id),
+              subjectName: subject.name,
+              topicName: topic.name,
+              subtopicName: sub.name,
             });
             subtopics += 1;
           }
@@ -112,6 +128,21 @@ async function main() {
   console.log(
     `  examBodies=${bodies}, examTypes=${types}, subjects=${subjects}, topics=${topics}, subtopics=${subtopics}`
   );
+
+  const exportPath = path.join(__dirname, 'taxonomy-ids-for-mcq.json');
+  await writeFile(
+    exportPath,
+    JSON.stringify(
+      {
+        exportedAt: new Date().toISOString(),
+        placements,
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
+  console.log(`  wrote ${exportPath} (${placements.length} placements for MCQ seed)`);
 }
 
 try {
