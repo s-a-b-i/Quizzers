@@ -23,6 +23,30 @@ function stripCorrectAnswerOnly(row) {
   return o;
 }
 
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Subject ids under an exam body from the taxonomy database (same Atlas cluster, different DB name).
+ * Lets exam-body-only MCQ lists include questions with subjectId but empty examMappings.
+ */
+async function getSubjectIdsForExamBody(examBodyObjectId) {
+  const dbName = (process.env.TAXONOMY_DB_NAME || 'quizzera_taxonomy').trim();
+  try {
+    const client = mongoose.connection.getClient();
+    if (!client || !dbName) return [];
+    const coll = client.db(dbName).collection('subjects');
+    const docs = await coll
+      .find({ examBodyId: examBodyObjectId, isActive: true })
+      .project({ _id: 1 })
+      .toArray();
+    return docs.map((d) => d._id);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * List MCQs with filters and pagination.
  * @param {{ privileged: boolean, filters: object }} opts
@@ -45,13 +69,25 @@ export async function listMcqs({ privileged, filters }) {
   if (filters.subtopicId) {
     filter.subtopicId = filters.subtopicId;
   }
-  if (filters.difficulty) {
-    filter.difficulty = filters.difficulty;
+  if (filters.difficulties?.length === 1) {
+    filter.difficulty = filters.difficulties[0];
+  } else if (filters.difficulties?.length > 1) {
+    filter.difficulty = { $in: filters.difficulties };
   }
-  if (filters.examBodyId) {
-    filter.examMappings = {
-      $elemMatch: { examBodyId: new mongoose.Types.ObjectId(filters.examBodyId) },
-    };
+  const taxonomyNarrowed = !!(
+    filters.subjectId ||
+    filters.topicId ||
+    filters.subtopicId
+  );
+  if (filters.examBodyId && !taxonomyNarrowed) {
+    const bodyOid = new mongoose.Types.ObjectId(filters.examBodyId);
+    const subjectIds = await getSubjectIdsForExamBody(bodyOid);
+    const orParts = [{ examMappings: { $elemMatch: { examBodyId: bodyOid } } }];
+    if (subjectIds.length > 0) {
+      orParts.push({ subjectId: { $in: subjectIds } });
+    }
+    filter.$and = Array.isArray(filter.$and) ? [...filter.$and] : [];
+    filter.$and.push({ $or: orParts });
   }
   if (filters.reviewStatus) {
     filter.reviewStatus = filters.reviewStatus;
@@ -61,6 +97,12 @@ export async function listMcqs({ privileged, filters }) {
   }
   if (filters.tags?.length) {
     filter.tags = { $in: filters.tags };
+  }
+  if (filters.searchText) {
+    filter.questionStem = {
+      $regex: escapeRegex(filters.searchText),
+      $options: 'i',
+    };
   }
 
   const skip = (filters.page - 1) * filters.limit;
@@ -91,12 +133,12 @@ export async function getMcqById(id, { privileged }) {
   }
 
   const _id = new mongoose.Types.ObjectId(id);
-  const base = { _id, isActive: true };
 
   const filter = privileged
-    ? base
+    ? { _id }
     : {
-        ...base,
+        _id,
+        isActive: true,
         visibilityStatus: 'public',
         reviewStatus: 'approved',
       };
@@ -104,6 +146,9 @@ export async function getMcqById(id, { privileged }) {
   const row = await MCQ.findOne(filter).lean();
   if (!row) return null;
 
+  if (privileged) {
+    return { ...row };
+  }
   return stripPublicMcqFields(row);
 }
 

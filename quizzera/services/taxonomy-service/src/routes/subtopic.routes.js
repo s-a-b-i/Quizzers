@@ -1,44 +1,44 @@
 import { Router } from 'express';
 import {
-  createTopic,
-  deleteTopicBySlug,
-  getTopicBySlug,
-  listTopics,
-  patchTopicBySlug,
-} from '../controllers/topics.controller.js';
+  createSubtopic,
+  deleteSubtopicBySlug,
+  getSubtopicBySlug,
+  listSubtopics,
+  patchSubtopicBySlug,
+} from '../controllers/subtopics.controller.js';
 import { requireAdminIfIncludeInactive } from '../middleware/requireAdminIfIncludeInactive.js';
 import { requireRole } from '../middleware/requireRole.js';
-import { validateCreateTopic } from '../middleware/validateCreateTopic.js';
-import { validatePatchTopic } from '../middleware/validatePatchTopic.js';
+import { validateCreateSubtopic } from '../middleware/validateCreateSubtopic.js';
+import { validatePatchSubtopic } from '../middleware/validatePatchSubtopic.js';
 import { verifyToken } from '../middleware/verifyToken.js';
 
 const router = Router();
 
-router.get('/', requireAdminIfIncludeInactive, listTopics);
+router.get('/', requireAdminIfIncludeInactive, listSubtopics);
 
 router.post(
   '/',
   verifyToken,
   requireRole(['admin', 'superAdmin']),
-  validateCreateTopic,
-  createTopic
+  validateCreateSubtopic,
+  createSubtopic
 );
 
-router.get('/:slug', getTopicBySlug);
+router.get('/:slug', getSubtopicBySlug);
 
 router.patch(
   '/:slug',
   verifyToken,
   requireRole(['admin', 'superAdmin']),
-  validatePatchTopic,
-  patchTopicBySlug
+  validatePatchSubtopic,
+  patchSubtopicBySlug
 );
 
 router.delete(
   '/:slug',
   verifyToken,
   requireRole(['superAdmin']),
-  deleteTopicBySlug
+  deleteSubtopicBySlug
 );
 
 export default router;

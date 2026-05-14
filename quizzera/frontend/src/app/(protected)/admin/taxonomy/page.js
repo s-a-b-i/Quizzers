@@ -109,7 +109,7 @@ function ExplorerRow({
   );
 }
 
-function TaxonomyFlowGuide({ selectedBody, selectedType }) {
+function TaxonomyFlowGuide({ selectedBody, selectedType, selectedSubject, selectedTopic }) {
   const steps = [
     {
       key: 'body',
@@ -135,19 +135,37 @@ function TaxonomyFlowGuide({ selectedBody, selectedType }) {
           : 'Opens after a type is selected',
       active: !!(selectedBody && selectedType),
     },
+    {
+      key: 'topic',
+      n: '4',
+      title: 'Topics',
+      caption: selectedSubject
+        ? `Add under subject “${selectedSubject.name}”`
+        : 'Select a subject in column 3 first',
+      active: !!selectedSubject,
+    },
+    {
+      key: 'subtopic',
+      n: '5',
+      title: 'Subtopics',
+      caption: selectedTopic
+        ? `Add under topic “${selectedTopic.name}”`
+        : 'Select a topic in column 4 first',
+      active: !!selectedTopic,
+    },
   ];
 
   return (
     <div
-      className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-0 sm:rounded-xl sm:border sm:border-border sm:shadow-soft"
+      className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-5 md:gap-0 md:rounded-xl md:border md:border-border md:shadow-soft"
       role="region"
       aria-label="Taxonomy workflow"
     >
       {steps.map((s, i) => (
         <div
           key={s.key}
-          className={`flex gap-3 rounded-xl border border-border p-3 sm:rounded-none sm:border-0 sm:p-4 ${
-            i > 0 ? 'sm:border-l sm:border-border' : ''
+          className={`flex gap-3 rounded-xl border border-border p-3 md:rounded-none md:border-0 md:p-4 ${
+            i > 0 ? 'md:border-l md:border-border' : ''
           } ${s.active ? 'bg-surface' : 'bg-background'}`}
         >
           <div
@@ -191,23 +209,33 @@ export default function AdminTaxonomyPage() {
   const [examBodies, setExamBodies] = useState([]);
   const [examTypes, setExamTypes] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [topics, setTopics] = useState([]);
+  const [subtopics, setSubtopics] = useState([]);
 
   const [selectedBodySlug, setSelectedBodySlug] = useState(null);
   const [selectedTypeSlug, setSelectedTypeSlug] = useState(null);
   const [selectedSubjectSlug, setSelectedSubjectSlug] = useState(null);
+  const [selectedTopicSlug, setSelectedTopicSlug] = useState(null);
+  const [selectedSubtopicSlug, setSelectedSubtopicSlug] = useState(null);
 
   const [loadingBodies, setLoadingBodies] = useState(true);
   const [loadingTypes, setLoadingTypes] = useState(false);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [loadingTopics, setLoadingTopics] = useState(false);
+  const [loadingSubtopics, setLoadingSubtopics] = useState(false);
 
   const [error, setError] = useState('');
 
   const [addBodyName, setAddBodyName] = useState('');
   const [addTypeName, setAddTypeName] = useState('');
   const [addSubjectName, setAddSubjectName] = useState('');
+  const [addTopicName, setAddTopicName] = useState('');
+  const [addSubtopicName, setAddSubtopicName] = useState('');
   const [showAddBody, setShowAddBody] = useState(false);
   const [showAddType, setShowAddType] = useState(false);
   const [showAddSubject, setShowAddSubject] = useState(false);
+  const [showAddTopic, setShowAddTopic] = useState(false);
+  const [showAddSubtopic, setShowAddSubtopic] = useState(false);
 
   const [editing, setEditing] = useState(null);
   const [editDraft, setEditDraft] = useState('');
@@ -220,6 +248,14 @@ export default function AdminTaxonomyPage() {
   const selectedType = useMemo(
     () => examTypes.find((t) => t.slug === selectedTypeSlug) ?? null,
     [examTypes, selectedTypeSlug]
+  );
+  const selectedSubject = useMemo(
+    () => subjects.find((s) => s.slug === selectedSubjectSlug) ?? null,
+    [subjects, selectedSubjectSlug]
+  );
+  const selectedTopic = useMemo(
+    () => topics.find((t) => t.slug === selectedTopicSlug) ?? null,
+    [topics, selectedTopicSlug]
   );
 
   const handleAuthError = useCallback(
@@ -308,6 +344,60 @@ export default function AdminTaxonomyPage() {
     [fbUser, isAdmin, handleAuthError]
   );
 
+  const loadTopics = useCallback(
+    async (subjectId) => {
+      if (!fbUser || !isAdmin || !subjectId) {
+        setTopics([]);
+        return;
+      }
+      setError('');
+      setLoadingTopics(true);
+      try {
+        const { data } = await apiGet('/api/taxonomy/topics', {
+          params: { subjectId, includeInactive: 'true' },
+        });
+        if (!data?.success || !Array.isArray(data?.data?.topics)) {
+          throw new Error(data?.message || 'Could not load topics.');
+        }
+        setTopics(data.data.topics);
+      } catch (e) {
+        if (handleAuthError(e)) return;
+        setError(e?.response?.data?.message || e?.message || 'Failed to load topics.');
+        setTopics([]);
+      } finally {
+        setLoadingTopics(false);
+      }
+    },
+    [fbUser, isAdmin, handleAuthError]
+  );
+
+  const loadSubtopics = useCallback(
+    async (topicId) => {
+      if (!fbUser || !isAdmin || !topicId) {
+        setSubtopics([]);
+        return;
+      }
+      setError('');
+      setLoadingSubtopics(true);
+      try {
+        const { data } = await apiGet('/api/taxonomy/subtopics', {
+          params: { topicId, includeInactive: 'true' },
+        });
+        if (!data?.success || !Array.isArray(data?.data?.subtopics)) {
+          throw new Error(data?.message || 'Could not load subtopics.');
+        }
+        setSubtopics(data.data.subtopics);
+      } catch (e) {
+        if (handleAuthError(e)) return;
+        setError(e?.response?.data?.message || e?.message || 'Failed to load subtopics.');
+        setSubtopics([]);
+      } finally {
+        setLoadingSubtopics(false);
+      }
+    },
+    [fbUser, isAdmin, handleAuthError]
+  );
+
   useEffect(() => {
     if (!authLoading && fbUser && mongoUser && !isAdmin) {
       router.replace('/dashboard');
@@ -326,23 +416,65 @@ export default function AdminTaxonomyPage() {
       setSelectedTypeSlug(null);
       setSubjects([]);
       setSelectedSubjectSlug(null);
+      setTopics([]);
+      setSelectedTopicSlug(null);
+      setSubtopics([]);
+      setSelectedSubtopicSlug(null);
       return;
     }
     loadTypes(selectedBody._id);
     setSelectedTypeSlug(null);
     setSubjects([]);
     setSelectedSubjectSlug(null);
+    setTopics([]);
+    setSelectedTopicSlug(null);
+    setSubtopics([]);
+    setSelectedSubtopicSlug(null);
   }, [selectedBody, loadTypes]);
 
   useEffect(() => {
     if (!selectedBody?._id || !selectedType?._id) {
       setSubjects([]);
       setSelectedSubjectSlug(null);
+      setTopics([]);
+      setSelectedTopicSlug(null);
+      setSubtopics([]);
+      setSelectedSubtopicSlug(null);
       return;
     }
     loadSubjects(selectedBody._id, selectedType._id);
     setSelectedSubjectSlug(null);
+    setTopics([]);
+    setSelectedTopicSlug(null);
+    setSubtopics([]);
+    setSelectedSubtopicSlug(null);
   }, [selectedBody, selectedType, loadSubjects]);
+
+  useEffect(() => {
+    if (!selectedSubject?._id) {
+      setTopics([]);
+      setSelectedTopicSlug(null);
+      setSubtopics([]);
+      setSelectedSubtopicSlug(null);
+      return undefined;
+    }
+    loadTopics(selectedSubject._id);
+    setSelectedTopicSlug(null);
+    setSubtopics([]);
+    setSelectedSubtopicSlug(null);
+    return undefined;
+  }, [selectedSubject?._id, loadTopics]);
+
+  useEffect(() => {
+    if (!selectedTopic?._id) {
+      setSubtopics([]);
+      setSelectedSubtopicSlug(null);
+      return undefined;
+    }
+    loadSubtopics(selectedTopic._id);
+    setSelectedSubtopicSlug(null);
+    return undefined;
+  }, [selectedTopic?._id, loadSubtopics]);
 
   const setBusy = (slug, v) => setBusySlug(v ? slug : null);
 
@@ -376,10 +508,14 @@ export default function AdminTaxonomyPage() {
       if (resource === 'exam-bodies' && res.examBody) newSlug = res.examBody.slug;
       if (resource === 'exam-types' && res.examType) newSlug = res.examType.slug;
       if (resource === 'subjects' && res.subject) newSlug = res.subject.slug;
+      if (resource === 'topics' && res.topic) newSlug = res.topic.slug;
+      if (resource === 'subtopics' && res.subtopic) newSlug = res.subtopic.slug;
       if (newSlug && newSlug !== slug) {
         if (resource === 'exam-bodies' && selectedBodySlug === slug) setSelectedBodySlug(newSlug);
         if (resource === 'exam-types' && selectedTypeSlug === slug) setSelectedTypeSlug(newSlug);
         if (resource === 'subjects' && selectedSubjectSlug === slug) setSelectedSubjectSlug(newSlug);
+        if (resource === 'topics' && selectedTopicSlug === slug) setSelectedTopicSlug(newSlug);
+        if (resource === 'subtopics' && selectedSubtopicSlug === slug) setSelectedSubtopicSlug(newSlug);
       }
       await reload();
     }
@@ -401,12 +537,20 @@ export default function AdminTaxonomyPage() {
       if (resource === 'subjects' && selectedSubjectSlug === slug) {
         setSelectedSubjectSlug(null);
       }
+      if (resource === 'topics' && selectedTopicSlug === slug) {
+        setSelectedTopicSlug(null);
+      }
+      if (resource === 'subtopics' && selectedSubtopicSlug === slug) {
+        setSelectedSubtopicSlug(null);
+      }
     } else {
       await loadBodies();
       if (selectedBody?._id) await loadTypes(selectedBody._id);
       if (selectedBody?._id && selectedType?._id) {
         await loadSubjects(selectedBody._id, selectedType._id);
       }
+      if (selectedSubject?._id) await loadTopics(selectedSubject._id);
+      if (selectedTopic?._id) await loadSubtopics(selectedTopic._id);
     }
   }
 
@@ -506,6 +650,70 @@ export default function AdminTaxonomyPage() {
     }
   }
 
+  async function createTopic() {
+    if (!selectedSubject?._id) return;
+    const name = addTopicName.trim();
+    if (!name) {
+      setError('Enter a name for the topic.');
+      return;
+    }
+    setError('');
+    setBusy('__add_topic', true);
+    try {
+      const { data } = await apiPost('/api/taxonomy/topics', {
+        name,
+        subjectId: selectedSubject._id,
+        description: '',
+        tags: [],
+      });
+      if (!data?.success || !data?.data?.topic) {
+        throw new Error(data?.message || 'Create failed.');
+      }
+      setAddTopicName('');
+      setShowAddTopic(false);
+      await loadTopics(selectedSubject._id);
+      const slug = data.data.topic.slug;
+      if (slug) setSelectedTopicSlug(slug);
+    } catch (e) {
+      if (handleAuthError(e)) return;
+      setError(e?.response?.data?.message || e?.message || 'Create failed.');
+    } finally {
+      setBusy('__add_topic', false);
+    }
+  }
+
+  async function createSubtopic() {
+    if (!selectedTopic?._id) return;
+    const name = addSubtopicName.trim();
+    if (!name) {
+      setError('Enter a name for the subtopic.');
+      return;
+    }
+    setError('');
+    setBusy('__add_subtopic', true);
+    try {
+      const { data } = await apiPost('/api/taxonomy/subtopics', {
+        name,
+        topicId: selectedTopic._id,
+        description: '',
+        tags: [],
+      });
+      if (!data?.success || !data?.data?.subtopic) {
+        throw new Error(data?.message || 'Create failed.');
+      }
+      setAddSubtopicName('');
+      setShowAddSubtopic(false);
+      await loadSubtopics(selectedTopic._id);
+      const slug = data.data.subtopic.slug;
+      if (slug) setSelectedSubtopicSlug(slug);
+    } catch (e) {
+      if (handleAuthError(e)) return;
+      setError(e?.response?.data?.message || e?.message || 'Create failed.');
+    } finally {
+      setBusy('__add_subtopic', false);
+    }
+  }
+
   if (authLoading || !fbUser) {
     return <PageLoader />;
   }
@@ -519,11 +727,17 @@ export default function AdminTaxonomyPage() {
       <header className="mb-4">
         <h1 className="text-xl font-semibold tracking-tight">Admin: Taxonomy</h1>
         <p className="mt-1 text-sm text-secondary">
-          Exam bodies, types, and subjects. Changes apply to the live taxonomy service.
+          Exam bodies, types, subjects, topics, and subtopics (needed for MCQ placement). Changes
+          apply to the live taxonomy service.
         </p>
       </header>
 
-      <TaxonomyFlowGuide selectedBody={selectedBody} selectedType={selectedType} />
+      <TaxonomyFlowGuide
+        selectedBody={selectedBody}
+        selectedType={selectedType}
+        selectedSubject={selectedSubject}
+        selectedTopic={selectedTopic}
+      />
 
       {error ? (
         <div
@@ -534,7 +748,8 @@ export default function AdminTaxonomyPage() {
         </div>
       ) : null}
 
-      <div className="grid min-h-[min(70vh,560px)] grid-cols-1 divide-y divide-border overflow-hidden rounded-xl border border-border bg-background shadow-soft md:grid-cols-3 md:divide-x md:divide-y-0">
+      <div className="overflow-x-auto rounded-xl border border-border shadow-soft">
+        <div className="grid min-h-[min(70vh,560px)] min-w-0 grid-cols-1 divide-y divide-border bg-background sm:min-w-[920px] sm:grid-cols-5 sm:divide-x sm:divide-y-0">
         <ColumnShell
           title="Exam bodies"
           action={
@@ -757,6 +972,163 @@ export default function AdminTaxonomyPage() {
             </>
           )}
         </ColumnShell>
+
+        <ColumnShell
+          title="Topics"
+          action={
+            <button
+              type="button"
+              disabled={!selectedSubject}
+              onClick={() => setShowAddTopic((v) => !v)}
+              className="shrink-0 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-primary hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {showAddTopic ? 'Close' : 'Add'}
+            </button>
+          }
+        >
+          {!selectedSubject ? (
+            <p className="px-3 py-6 text-sm text-secondary">
+              Select a subject in column 3 to list and add topics (required for MCQs).
+            </p>
+          ) : (
+            <>
+              {showAddTopic ? (
+                <div className="border-b border-border bg-surface px-3 py-3">
+                  <input
+                    type="text"
+                    value={addTopicName}
+                    onChange={(e) => setAddTopicName(e.target.value)}
+                    placeholder="New topic name"
+                    className="mb-2 w-full rounded border border-border bg-background px-3 py-2 text-sm text-primary outline-none focus:border-primary"
+                  />
+                  <button
+                    type="button"
+                    disabled={busySlug === '__add_topic'}
+                    onClick={createTopic}
+                    className="rounded-full bg-primary px-4 py-1.5 text-xs font-medium text-inverse hover:bg-primary-hover disabled:opacity-50"
+                  >
+                    Create
+                  </button>
+                </div>
+              ) : null}
+              {loadingTopics ? (
+                <p className="px-3 py-6 text-sm text-secondary">Loading…</p>
+              ) : topics.length === 0 ? (
+                <p className="px-3 py-6 text-sm text-secondary">No topics for this subject yet.</p>
+              ) : (
+                topics.map((t) => (
+                  <ExplorerRow
+                    key={t.slug}
+                    label={t.name}
+                    selected={selectedTopicSlug === t.slug}
+                    onSelect={() => setSelectedTopicSlug(t.slug)}
+                    editing={editing?.kind === 'topic' && editing.slug === t.slug}
+                    editValue={editDraft}
+                    onEditChange={setEditDraft}
+                    onEditSave={() =>
+                      handleRename('topics', t.slug, editDraft, () =>
+                        loadTopics(selectedSubject._id)
+                      )
+                    }
+                    onEditCancel={() => {
+                      setEditing(null);
+                      setEditDraft('');
+                    }}
+                    onEditClick={() => {
+                      setEditing({ kind: 'topic', slug: t.slug });
+                      setEditDraft(t.name);
+                    }}
+                    active={t.isActive !== false}
+                    onActiveChange={(checked) =>
+                      handleActiveToggle('topics', t.slug, checked, setTopics)
+                    }
+                    busy={busySlug === t.slug}
+                    disableActive={false}
+                  />
+                ))
+              )}
+            </>
+          )}
+        </ColumnShell>
+
+        <ColumnShell
+          title="Subtopics"
+          action={
+            <button
+              type="button"
+              disabled={!selectedTopic}
+              onClick={() => setShowAddSubtopic((v) => !v)}
+              className="shrink-0 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-primary hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {showAddSubtopic ? 'Close' : 'Add'}
+            </button>
+          }
+        >
+          {!selectedTopic ? (
+            <p className="px-3 py-6 text-sm text-secondary">
+              Select a topic in column 4 to list and add subtopics (required for MCQs).
+            </p>
+          ) : (
+            <>
+              {showAddSubtopic ? (
+                <div className="border-b border-border bg-surface px-3 py-3">
+                  <input
+                    type="text"
+                    value={addSubtopicName}
+                    onChange={(e) => setAddSubtopicName(e.target.value)}
+                    placeholder="New subtopic name"
+                    className="mb-2 w-full rounded border border-border bg-background px-3 py-2 text-sm text-primary outline-none focus:border-primary"
+                  />
+                  <button
+                    type="button"
+                    disabled={busySlug === '__add_subtopic'}
+                    onClick={createSubtopic}
+                    className="rounded-full bg-primary px-4 py-1.5 text-xs font-medium text-inverse hover:bg-primary-hover disabled:opacity-50"
+                  >
+                    Create
+                  </button>
+                </div>
+              ) : null}
+              {loadingSubtopics ? (
+                <p className="px-3 py-6 text-sm text-secondary">Loading…</p>
+              ) : subtopics.length === 0 ? (
+                <p className="px-3 py-6 text-sm text-secondary">No subtopics for this topic yet.</p>
+              ) : (
+                subtopics.map((st) => (
+                  <ExplorerRow
+                    key={st.slug}
+                    label={st.name}
+                    selected={selectedSubtopicSlug === st.slug}
+                    onSelect={() => setSelectedSubtopicSlug(st.slug)}
+                    editing={editing?.kind === 'subtopic' && editing.slug === st.slug}
+                    editValue={editDraft}
+                    onEditChange={setEditDraft}
+                    onEditSave={() =>
+                      handleRename('subtopics', st.slug, editDraft, () =>
+                        loadSubtopics(selectedTopic._id)
+                      )
+                    }
+                    onEditCancel={() => {
+                      setEditing(null);
+                      setEditDraft('');
+                    }}
+                    onEditClick={() => {
+                      setEditing({ kind: 'subtopic', slug: st.slug });
+                      setEditDraft(st.name);
+                    }}
+                    active={st.isActive !== false}
+                    onActiveChange={(checked) =>
+                      handleActiveToggle('subtopics', st.slug, checked, setSubtopics)
+                    }
+                    busy={busySlug === st.slug}
+                    disableActive={false}
+                  />
+                ))
+              )}
+            </>
+          )}
+        </ColumnShell>
+        </div>
       </div>
     </main>
   );

@@ -1,0 +1,326 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black}
+
+\title{Quizzera MCQ System\\Technical Flow \& Hands-On Test Guide}
+\author{Architecture reference + step-by-step verification (from codebase)}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Purpose and scope}
+
+This document has two parts: (1)~\textbf{where and how to test} the full MCQ journey in a browser, with questions and answers you can use to verify behavior; (2)~technical reference for routes, data model, and security.
+
+\section{Start here: where to test the full MCQ flow}
+
+\subsection{What must be running}
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{MongoDB} reachable from both \texttt{mcq-service} and \texttt{taxonomy-service} (connection strings in each service \texttt{.env}).
+  \item \textbf{Taxonomy service} --- seeds or existing data so you have at least one exam body $\rightarrow$ subject $\rightarrow$ topic $\rightarrow$ subtopic (IDs are required when creating MCQs).
+  \item \textbf{MCQ service} --- same DB; can run seed scripts if you need many public approved MCQs quickly.
+  \item \textbf{Auth service} (if your stack expects it for login) and \textbf{Gateway} (\texttt{quizzera/gateway}) --- default \texttt{PORT} is often \texttt{3000}.
+  \item \textbf{Next.js frontend} (\texttt{quizzera/frontend}) --- \texttt{npm run dev}. It rewrites \texttt{/api/*} to \texttt{NEXT\_PUBLIC\_GATEWAY\_URL} (see \texttt{next.config.js}), defaulting to \texttt{http://localhost:3000}.
+\end{enumerate}
+
+\textbf{Rule of thumb:} open the app at whatever host the frontend prints (e.g.\ \texttt{http://localhost:3006}). All MCQ UI tests go through that origin so cookies/tokens and \texttt{/api/mcqs} rewrites work.
+
+\subsection{Accounts and roles (what to log in as)}
+
+\begin{description}[style=nextline]
+  \item[Student / mentor / etc.] Use for \textbf{/mcqs}, \textbf{/mcqs/[id]}, \textbf{/bookmarks}. Must not be \texttt{guest} if you want bookmarks and answer reveal (\texttt{checkEntitlement}).
+  \item[\texttt{contentManager}] Admin MCQ bank: create, edit, bulk import, list with filters; \textbf{cannot} call soft-delete (deactivate) in API.
+  \item[\texttt{admin} or \texttt{superAdmin}] Full admin bank including \textbf{Deactivate} (DELETE).
+\end{description}
+Ensure the Mongo user document for your Firebase account has the role you expect (synced via your auth flow, e.g.\ \texttt{/api/auth/google}).
+
+\subsection{Recommended test order (do this sequence)}
+
+Follow this order once; it mirrors the real lifecycle from authoring to learner.
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Taxonomy sanity check} --- In UI or via API, confirm you can list exam bodies and drill to subjects/topics/subtopics. Without valid IDs you cannot save a new MCQ.
+  \item \textbf{Create an MCQ (admin)} --- Log in as \texttt{contentManager} (or admin). Open \texttt{/admin/mcqs}. Click \textbf{+ Add MCQ}. Fill stem, pick subject/topic/subtopic, set options (2--6), pick correct answer radio, set \textbf{Review status} to \textbf{approved} and \textbf{Visibility} to \textbf{public}, ensure \textbf{Active} is on. Submit. Expected: drawer closes, row appears in table (or refresh list).
+  \item \textbf{See it on browse} --- Log in as a normal user (or same user). Open \texttt{/mcqs}. Expected: your question appears only if it is \textbf{approved}, \textbf{public}, and \textbf{active}. Use filters to narrow; use search if you added privileged filters as admin.
+  \item \textbf{Practice flow} --- Click the card. On \texttt{/mcqs/[id]}, select an option, click \textbf{Reveal answer}. Expected: correct/incorrect styling and explanation; network shows \texttt{GET /api/mcqs/:id/answer}.
+  \item \textbf{Bookmark} --- On browse or detail, toggle bookmark. Open \texttt{/bookmarks}. Expected: question listed; remove bookmark and confirm it disappears.
+  \item \textbf{Edit (admin)} --- On \texttt{/admin/mcqs}, open \textbf{Edit}, change stem or visibility, save. Expected: table updates without full reload; browse reflects changes after publish rules above.
+  \item \textbf{Bulk import (admin)} --- Open \textbf{Bulk Import}, paste a valid JSON \textbf{array} of MCQ objects (same shape as create). Submit. Expected: summary of inserted vs failed rows.
+  \item \textbf{Deactivate (admin only)} --- As admin/superAdmin, deactivate a row. Expected: it vanishes from public \texttt{/mcqs} list; may still appear in admin list depending on filters.
+  \item \textbf{Error UX} --- Temporarily stop MCQ service or break gateway URL; reload \texttt{/mcqs}. Expected: centered error copy and \textbf{Retry} button.
+\end{enumerate}
+
+\subsection{Quick URL map (where each flow lives)}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{URL path} & \textbf{What to test here} \\
+\midrule
+\texttt{/admin/mcqs} & Create, edit drawer, bulk, filters, table, deactivate (role permitting) \\
+\texttt{/mcqs} & Taxonomy filters, list, pagination, bookmark toggle, card $\rightarrow$ detail \\
+\texttt{/mcqs/\{id\}} & Options, reveal answer, bookmark, back link \\
+\texttt{/bookmarks} & Bookmark list, remove bookmark \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Questions and answers (testing checklist)}
+
+Below: a question you should ask while testing, and the answer that indicates success.
+
+\begin{description}[style=nextline, leftmargin=0pt]
+
+\item[Q1: Where do I \emph{start} if I want to test everything?]
+\textbf{A:} Start the stack (Mongo, taxonomy, MCQ, gateway, frontend), log in, open \textbf{\texttt{/admin/mcqs}}, and \textbf{create} one MCQ with public + approved + active. Then verify it on \textbf{\texttt{/mcqs}} as a learner path.
+
+\item[Q2: Why does my new MCQ not show on \texttt{/mcqs}?]
+\textbf{A:} Public browse only shows \texttt{reviewStatus=approved}, \texttt{visibilityStatus=public}, and \texttt{isActive=true}. Fix fields in admin (PATCH) or recreate with those values.
+
+\item[Q3: Where is the correct answer exposed?]
+\textbf{A:} Never in \texttt{GET /api/mcqs} or \texttt{GET /api/mcqs/:id} for the public learner. It appears only after \texttt{GET /api/mcqs/:id/answer} when the user is signed in and entitled.
+
+\item[Q4: How do I test bookmarks without admin?]
+\textbf{A:} Log in as a non-guest user, open a public question, toggle bookmark, open \texttt{/bookmarks}. Removing bookmark should call the same toggle API and remove the row.
+
+\item[Q5: How do I test ``forbidden'' paths?]
+\textbf{A:} Try \texttt{/admin/mcqs} as a plain \texttt{student} --- you should be redirected away. Try deactivate as \texttt{contentManager} --- the button should be absent; API would return 403 if forced.
+
+\item[Q6: How do I retest after an API error?]
+\textbf{A:} Use the \textbf{Retry} button on browse, bookmarks, detail, or admin table error states; each wires to the page's refetch function (\texttt{loadMcqs}, \texttt{loadBookmarks}, \texttt{loadMcq}, etc.).
+
+\item[Q7: What JSON do I use for bulk import?]
+\textbf{A:} A top-level JSON \textbf{array} of objects, each matching \texttt{POST /api/mcqs} body rules (see \texttt{mcqPayloadValidation.js}). Import one object in an array \texttt{[\{...\}]} to smoke-test.
+
+\item[Q8: How do I test internal exam fetch?]
+\textbf{A:} Not through the browser or gateway (\texttt{/api/mcqs/internal} is blocked at gateway). Use \texttt{curl} or exam-service against MCQ service directly with the internal secret header as implemented in \texttt{requireInternalSecret}.
+
+\end{description}
+
+\newpage
+
+\section{Technical reference: high-level architecture}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Frontend} (\texttt{quizzera/frontend}): Next.js App Router, client pages under \texttt{src/app/(protected)/}. Browser calls same-origin \texttt{/api/*}; \texttt{next.config.js} rewrites these to the gateway URL.
+  \item \textbf{Gateway} (\texttt{quizzera/gateway}): Express proxy. \texttt{/api/mcqs} $\rightarrow$ MCQ service with path prefix \texttt{/mcqs}. \texttt{/api/mcqs/internal/*} is explicitly blocked at the gateway (returns 404) so internal exam integration does not traverse the public gateway.
+  \item \textbf{MCQ service} (\texttt{quizzera/services/mcq-service}): Owns MongoDB models for MCQs, bookmarks, answer reveals, and users; exposes REST routes under \texttt{/mcqs}.
+  \item \textbf{Taxonomy service} (\texttt{quizzera/services/taxonomy-service}): Exam bodies, types, subjects, topics, subtopics---referenced by ObjectIds on each MCQ.
+  \item \textbf{Auth}: Firebase ID tokens are attached by the frontend axios layer as \texttt{Bearer}; \texttt{mcq-service} verifies tokens and resolves Mongo users for entitlement and ownership fields.
+\end{itemize}
+
+\section{Technical reference: gateway routing (MCQ)}
+
+\begin{itemize}[leftmargin=*]
+  \item Public browser path: \texttt{GET /api/mcqs}, \texttt{GET /api/mcqs/:id}, etc.
+  \item Rewritten upstream: \texttt{GET \{MCQ\_SERVICE\_URL\}/mcqs/...}
+  \item \texttt{/api/mcqs/internal/*}: not proxied; gateway returns JSON 404 so only trusted callers (e.g.\ exam-service) hit MCQ service directly.
+\end{itemize}
+
+\section{Technical reference: MongoDB data model (MCQ document)}
+
+Each MCQ document includes (among others):
+
+\begin{description}[style=nextline]
+  \item[\texttt{questionStem}] Required string (the question text).
+  \item[\texttt{options}] Array of \texttt{\{label, text\}}; length 2--6; labels must be unique within the question.
+  \item[\texttt{correctAnswer}] String matching one option \texttt{label}.
+  \item[\texttt{explanation}] String; may be empty.
+  \item[\texttt{subjectId}, \texttt{topicId}, \texttt{subtopicId}] ObjectId references into taxonomy.
+  \item[\texttt{examMappings}] Optional array of \texttt{\{examBodyId, examTypeId\}}.
+  \item[\texttt{difficulty}] \texttt{easy} $|$ \texttt{medium} $|$ \texttt{hard}.
+  \item[\texttt{tags}] Array of strings.
+  \item[\texttt{reviewStatus}] \texttt{draft} $|$ \texttt{reviewed} $|$ \texttt{approved}.
+  \item[\texttt{visibilityStatus}] \texttt{public} $|$ \texttt{premium} $|$ \texttt{hidden}.
+  \item[\texttt{createdBy}] Optional Mongo user reference.
+  \item[\texttt{isActive}] Boolean; soft-delete sets this to \texttt{false}.
+  \item[\texttt{createdAt}, \texttt{updatedAt}] From Mongoose timestamps.
+\end{description}
+
+\subsection{Public serialization and answers}
+
+\begin{itemize}[leftmargin=*]
+  \item Mongoose \texttt{toJSON}/\texttt{toObject} transforms strip \texttt{correctAnswer} and \texttt{explanation} from default serialization.
+  \item List and public-detail handlers additionally strip sensitive fields from lean query results so clients never receive the correct answer from \texttt{GET /mcqs} or \texttt{GET /mcqs/:id} in the learner path.
+  \item The correct answer and explanation for \textbf{approved, public, active} questions are returned only from \texttt{GET /mcqs/:id/answer} after \texttt{verifyToken} and \texttt{checkEntitlement}.
+  \item Admin create/update responses can expose full documents (including answers) via \texttt{toObjectWithAnswers()} where applicable.
+\end{itemize}
+
+\section{Technical reference: route map (\texttt{mcq-service})}
+
+\begin{longtable}{@{}p{0.42\textwidth}p{0.52\textwidth}@{}}
+\toprule
+\textbf{Route} & \textbf{Behavior / middleware} \\
+\midrule
+\endhead
+\texttt{GET /mcqs/health} & Health check. \\
+\texttt{GET /mcqs/} & \texttt{optionalListPrivilege}, \texttt{validateListMcqQuery}, \texttt{listMcqs}. Public list; privileged if Bearer is admin/superAdmin/contentManager. \\
+\texttt{GET /mcqs/bookmarks} & \texttt{verifyToken}, \texttt{checkEntitlement}, paginated bookmarked MCQs for user. \\
+\texttt{GET /mcqs/:id} & \texttt{optionalListPrivilege}, \texttt{getMcqById}. Public: only active + public + approved; privileged: any active/inactive by id with full fields for editors. \\
+\texttt{GET /mcqs/:id/answer} & \texttt{verifyToken}, \texttt{checkEntitlement}, \texttt{revealMcqAnswer}; logs \texttt{AnswerReveal} when user id resolvable. \\
+\texttt{POST /mcqs/:id/bookmark} & Toggle bookmark; add requires active MCQ. \\
+\texttt{POST /mcqs/} & \texttt{verifyToken}, role admin/superAdmin/contentManager, validate body, create. \\
+\texttt{POST /mcqs/bulk} & Same roles; array body; per-item validation and insert with error list. \\
+\texttt{PATCH /mcqs/:id} & admin/superAdmin/contentManager; merge patch; validation on merged document. \\
+\texttt{DELETE /mcqs/:id} & admin/superAdmin only; soft delete (\texttt{isActive = false}). \\
+\texttt{POST /mcqs/internal/fetch-for-exam} & Internal secret header; random approved public MCQs for exam generation. \\
+\bottomrule
+\end{longtable}
+
+\section{Technical reference: listing MCQs (\texttt{GET /mcqs})}
+
+\subsection{Public (unprivileged) caller}
+
+If the request has no Bearer token, or the user is not in the privileged role set, \texttt{req.mcqListPrivileged} is false. The Mongo filter \textbf{always} includes:
+\begin{itemize}[nosep]
+  \item \texttt{visibilityStatus = public}
+  \item \texttt{reviewStatus = approved}
+  \item \texttt{isActive = true}
+\end{itemize}
+Optional filters narrow results: \texttt{subjectId}, \texttt{topicId}, \texttt{subtopicId}, \texttt{examBodyId} (via \texttt{examMappings.\$elemMatch}), \texttt{difficulty} (single value or \texttt{\$in} for multiple), \texttt{tags} (\texttt{\$in}), pagination \texttt{page}, \texttt{limit}.
+
+\subsection{Privileged caller}
+
+Bearer token resolved to a user with role \texttt{admin}, \texttt{superAdmin}, or \texttt{contentManager} sets \texttt{req.mcqListPrivileged = true}. Then:
+\begin{itemize}[nosep]
+  \item No automatic filter on visibility, review status, or active flag (admin sees draft/hidden/inactive as stored).
+  \item Query may include \texttt{reviewStatus}, \texttt{visibilityStatus}, and \texttt{q} (case-insensitive regex on \texttt{questionStem}, max length 200, regex-escaped).
+\end{itemize}
+
+\subsection{Query parameters (validated)}
+
+Examples: \texttt{page}, \texttt{limit} (capped), \texttt{subjectId}, \texttt{topicId}, \texttt{subtopicId}, \texttt{examBodyId}, \texttt{difficulty} (comma-separated multi-value), \texttt{tags} (comma-separated or repeated), plus privileged-only \texttt{reviewStatus}, \texttt{visibilityStatus}, \texttt{q}.
+
+\section{Technical reference: single MCQ (\texttt{GET /mcqs/:id})}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Public}: document must be \texttt{isActive}, \texttt{public}, \texttt{approved}; response strips \texttt{correctAnswer} and \texttt{explanation}.
+  \item \textbf{Privileged}: match by \texttt{\_id} only; returns full document including answers and inactive rows for admin tooling.
+\end{itemize}
+
+\section{Technical reference: answer reveal (\texttt{GET /mcqs/:id/answer})}
+
+\begin{enumerate}[nosep]
+  \item Requires valid JWT and \texttt{checkEntitlement} (non-guest roles in current implementation).
+  \item MCQ must satisfy the same visibility constraints as public practice: active, public, approved.
+  \item Response body: \texttt{correctAnswer}, \texttt{explanation}.
+  \item Side effect: append-only \texttt{AnswerReveal} log when a Mongo \texttt{User} id can be resolved from the actor (Firebase UID lookup / create).
+\end{enumerate}
+
+\section{Technical reference: bookmarks}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Model}: \texttt{Bookmark} links \texttt{userId} and \texttt{mcqId}.
+  \item \textbf{POST /mcqs/:id/bookmark}: if bookmark exists, delete it (\texttt{bookmarked: false}); else create if MCQ exists and is active (\texttt{bookmarked: true}); idempotent handling for duplicate key.
+  \item \textbf{GET /mcqs/bookmarks}: paginated; sorts bookmarks by \texttt{createdAt} desc; hydrates MCQ rows; strips \texttt{correctAnswer} only (explanation may still be omitted depending on pipeline---client treats as practice-safe).
+\end{itemize}
+
+\section{Technical reference: create, update, bulk, delete}
+
+\subsection{Create (\texttt{POST /mcqs})}
+
+Roles: \texttt{admin}, \texttt{superAdmin}, \texttt{contentManager}. Body validated against allowed keys and structural rules (options, labels, \texttt{correctAnswer}, taxonomy ids, etc.). Defaults for review/visibility may be draft/hidden until published.
+
+\subsection{Bulk (\texttt{POST /mcqs/bulk})}
+
+JSON array (max size enforced by middleware). Each element validated like a single create; successes increment \texttt{inserted}; failures append \texttt{\{index, message\}} to \texttt{errors}.
+
+\subsection{Patch (\texttt{PATCH /mcqs/:id})}
+
+Shallow patch keys from an allow-list; merged with existing document; full merged document re-validated. Special case: approving review while visibility still hidden may auto-promote visibility to public (see service implementation).
+
+\subsection{Delete (\texttt{DELETE /mcqs/:id})}
+
+Roles: \texttt{admin}, \texttt{superAdmin} only. Soft delete: \texttt{isActive = false}.
+
+\section{Technical reference: internal exam fetch (\texttt{POST /mcqs/internal/fetch-for-exam})}
+
+Not exposed via gateway. Authenticated with shared internal secret. Returns a random sample of MCQs matching subtopic ids, difficulty, and count---used by exam generation; includes answer fields for server-side scoring.
+
+\section{Technical reference: frontend flows}
+
+\subsection{HTTP client (\texttt{src/lib/api.js})}
+
+\begin{itemize}[nosep]
+  \item All requests go to same-origin \texttt{/api/...}.
+  \item \texttt{Authorization: Bearer <Firebase ID token>} injected when available.
+  \item 401 triggers global logout handler registered by auth provider.
+\end{itemize}
+
+\subsection{Browse (\texttt{/mcqs})}
+
+\begin{enumerate}[nosep]
+  \item Loads taxonomy: exam bodies, then subjects per body, topics per subject.
+  \item Calls \texttt{GET /api/mcqs} with filter query params and pagination.
+  \item Optionally loads bookmark set (\texttt{GET /api/mcqs/bookmarks}) to show filled icons.
+  \item Cards link to \texttt{/mcqs/[id]}; bookmark icon \texttt{POST}s toggle.
+  \item Empty and error states use shared \texttt{McqResultsEmpty} / \texttt{McqResultsError} components; skeletons while loading.
+\end{enumerate}
+
+\subsection{Practice detail (\texttt{/mcqs/[id]})}
+
+\begin{enumerate}[nosep]
+  \item \texttt{GET /api/mcqs/:id} for stem, options (no correct answer), tags, metadata.
+  \item User selects an option; \texttt{GET /api/mcqs/:id/answer} reveals correctness and explanation UI.
+  \item Bookmark sync and toggle as on browse.
+  \item 404-style missing id uses empty state; other failures use retry error state.
+\end{enumerate}
+
+\subsection{Bookmarks (\texttt{/bookmarks})}
+
+\texttt{GET /api/mcqs/bookmarks} with pagination; taxonomy names enriched from subjects/topics; unbookmark updates local list; empty/error patterns aligned with browse.
+
+\subsection{Admin bank (\texttt{/admin/mcqs})}
+
+\begin{itemize}[leftmargin=*]
+  \item Access: \texttt{admin}, \texttt{superAdmin}, \texttt{contentManager}.
+  \item Privileged list with filters (\texttt{q}, review, visibility, difficulty) and table; deactivate (DELETE) only admin/superAdmin.
+  \item Add drawer: \texttt{POST /api/mcqs}; edit drawer: \texttt{GET} (full) + \texttt{PATCH}; bulk modal: \texttt{POST /api/mcqs/bulk}.
+  \item Taxonomy dropdowns load subjects, topics, subtopics, exam bodies/types for forms.
+\end{itemize}
+
+\section{Technical reference: entitlement (\texttt{checkEntitlement})}
+
+Currently: any authenticated role other than \texttt{guest} passes. Intended as a hook for future subscription or feature-flag checks on bookmark, answer reveal, and similar routes.
+
+\section{Technical reference: security summary}
+
+\begin{itemize}[leftmargin=*]
+  \item Answers are not returned on public list/detail JSON.
+  \item Answer reveal is a separate, authenticated, entitled endpoint with stricter MCQ visibility rules.
+  \item Admin write paths require explicit roles; soft delete is restricted to higher roles than content managers.
+  \item Privileged list/search prevents unauthenticated users from scraping draft or hidden content via \texttt{reviewStatus}, \texttt{visibilityStatus}, or \texttt{q}.
+  \item Internal exam endpoint is secret-gated and not proxied through the public gateway.
+\end{itemize}
+
+\section{Suggested further reading (in-repo)}
+
+\begin{itemize}[nosep]
+  \item \texttt{services/mcq-service/src/lib/mcqPayloadValidation.js} --- create/patch validation rules.
+  \item \texttt{services/mcq-service/src/middleware/validateListMcqQuery.js} --- full query parsing.
+  \item \texttt{services/taxonomy-service/} --- subject/topic/subtopic listing used by UIs.
+\end{itemize}
+
+\end{document}

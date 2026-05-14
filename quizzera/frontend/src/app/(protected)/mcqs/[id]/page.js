@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { apiGet, apiPost } from '@/lib/api';
-import { PageLoader } from '@/components/ui/PageLoader';
+import { McqResultsEmpty, McqResultsError } from '@/components/mcq/McqPageStates';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 function BookmarkIcon({ filled, className }) {
   return (
@@ -24,6 +25,7 @@ function BookmarkIcon({ filled, className }) {
 
 export default function McqPracticePage() {
   const params = useParams();
+  const router = useRouter();
   const id = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : '';
 
   const [mcq, setMcq] = useState(null);
@@ -41,7 +43,8 @@ export default function McqPracticePage() {
 
   const loadMcq = useCallback(async () => {
     if (!id) {
-      setLoadError('Invalid question link.');
+      setLoadError('');
+      setMcq(null);
       setLoading(false);
       return;
     }
@@ -50,12 +53,20 @@ export default function McqPracticePage() {
     try {
       const { data } = await apiGet(`/api/mcqs/${encodeURIComponent(id)}`);
       if (!data?.success || !data?.data?.mcq) {
-        throw new Error(data?.message || 'Could not load question.');
+        setLoadError('');
+        setMcq(null);
+        return;
       }
       setMcq(data.data.mcq);
     } catch (e) {
-      setLoadError(e?.response?.data?.message || e?.message || 'Could not load question.');
-      setMcq(null);
+      const status = e?.response?.status;
+      if (status === 404) {
+        setLoadError('');
+        setMcq(null);
+      } else {
+        setLoadError(e?.response?.data?.message || e?.message || 'Could not load question.');
+        setMcq(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -148,10 +159,30 @@ export default function McqPracticePage() {
   };
 
   if (loading) {
-    return <PageLoader />;
+    return (
+      <div className="min-h-screen bg-white text-[#111111]">
+        <div className="mx-auto max-w-2xl px-6 py-8">
+          <div className="flex items-start justify-between gap-4">
+            <Skeleton height="16px" width="72px" borderRadius="4px" />
+            <Skeleton height="28px" width="28px" borderRadius="6px" />
+          </div>
+          <Skeleton className="mt-8" height="88px" width="100%" borderRadius="8px" />
+          <div className="mt-8 flex flex-col gap-3" aria-busy="true" aria-label="Loading question">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} height="72px" width="100%" borderRadius="12px" />
+            ))}
+          </div>
+          <div className="mt-10 flex flex-wrap gap-2 border-t border-transparent pt-8">
+            <Skeleton height="26px" width="64px" borderRadius="9999px" />
+            <Skeleton height="26px" width="80px" borderRadius="9999px" />
+            <Skeleton height="26px" width="56px" borderRadius="9999px" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  if (loadError || !mcq) {
+  if (!loading && loadError) {
     return (
       <div className="min-h-screen bg-white px-6 py-10 text-[#111111]">
         <div className="mx-auto max-w-2xl">
@@ -161,9 +192,27 @@ export default function McqPracticePage() {
           >
             ← Back to MCQs
           </Link>
-          <p className="mt-10 text-sm text-[#6B6B6B]" role="alert">
-            {loadError || 'Question not found.'}
-          </p>
+          <div className="mt-8">
+            <McqResultsError onRetry={() => loadMcq()} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!loading && !loadError && !mcq) {
+    return (
+      <div className="min-h-screen bg-white px-6 py-10 text-[#111111]">
+        <div className="mx-auto max-w-2xl">
+          <Link
+            href="/mcqs"
+            className="inline-flex items-center gap-2 text-sm font-medium text-[#111111] underline-offset-4 hover:underline"
+          >
+            ← Back to MCQs
+          </Link>
+          <div className="mt-8">
+            <McqResultsEmpty onClearFilters={() => router.push('/mcqs')} />
+          </div>
         </div>
       </div>
     );

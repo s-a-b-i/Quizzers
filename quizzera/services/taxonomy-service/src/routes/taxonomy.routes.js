@@ -3,6 +3,7 @@ import examBodyRoutes from './examBody.routes.js';
 import examTypeRoutes from './examType.routes.js';
 import subjectRoutes from './subject.routes.js';
 import topicRoutes from './topic.routes.js';
+import subtopicRoutes from './subtopic.routes.js';
 import treeRoutes from './tree.routes.js';
 
 const router = Router();
@@ -19,6 +20,7 @@ router.use('/exam-bodies', examBodyRoutes);
 router.use('/exam-types', examTypeRoutes);
 router.use('/subjects', subjectRoutes);
 router.use('/topics', topicRoutes);
+router.use('/subtopics', subtopicRoutes);
 router.use('/tree', treeRoutes);
 
 export default router;

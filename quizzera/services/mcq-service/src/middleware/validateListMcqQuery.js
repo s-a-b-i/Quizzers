@@ -46,6 +46,30 @@ function optionalObjectIdQuery(req, res, paramName) {
   return { ok: true, value: id };
 }
 
+/**
+ * @param {import('express').Request} req
+ * @returns {{ ok: true, values: string[] } | { ok: false }}
+ */
+function parseDifficultyList(req) {
+  const raw = req.query.difficulty;
+  if (raw === undefined || raw === null) {
+    return { ok: true, values: [] };
+  }
+  const parts = Array.isArray(raw)
+    ? raw.flatMap((r) => String(r).split(','))
+    : String(raw).split(',');
+  const out = [];
+  for (const p of parts) {
+    const d = String(p).trim().toLowerCase();
+    if (!d) continue;
+    if (!DIFFICULTIES.has(d)) {
+      return { ok: false };
+    }
+    if (!out.includes(d)) out.push(d);
+  }
+  return { ok: true, values: out };
+}
+
 /** GET /mcqs — parse and validate list query; attach `req.mcqListQuery`. */
 export function validateListMcqQuery(req, res, next) {
   const privileged = req.mcqListPrivileged === true;
@@ -59,16 +83,14 @@ export function validateListMcqQuery(req, res, next) {
   const examBody = optionalObjectIdQuery(req, res, 'examBodyId');
   if (!examBody.ok) return;
 
-  const diffRaw = firstQuery(req.query.difficulty);
-  if (diffRaw !== undefined && diffRaw !== null && String(diffRaw).trim() !== '') {
-    const d = String(diffRaw).trim();
-    if (!DIFFICULTIES.has(d)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Query "difficulty" must be one of: easy, medium, hard.',
-      });
-    }
+  const diffParsed = parseDifficultyList(req);
+  if (!diffParsed.ok) {
+    return res.status(400).json({
+      success: false,
+      message: 'Query "difficulty" must use only: easy, medium, hard (comma-separated allowed).',
+    });
   }
+  const difficulties = diffParsed.values;
 
   const reviewRaw = firstQuery(req.query.reviewStatus);
   if (reviewRaw !== undefined && reviewRaw !== null && String(reviewRaw).trim() !== '') {
@@ -104,6 +126,25 @@ export function validateListMcqQuery(req, res, next) {
     }
   }
 
+  const qRaw = firstQuery(req.query.q);
+  let searchText;
+  if (qRaw !== undefined && qRaw !== null && String(qRaw).trim() !== '') {
+    if (!privileged) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only administrators may search by question text.',
+      });
+    }
+    const t = String(qRaw).trim();
+    if (t.length > 200) {
+      return res.status(400).json({
+        success: false,
+        message: 'Query "q" must be at most 200 characters.',
+      });
+    }
+    searchText = t;
+  }
+
   const page = parsePositiveInt(req.query.page, 1, 1_000_000);
   const limit = parsePositiveInt(req.query.limit, 20, 100);
 
@@ -112,10 +153,7 @@ export function validateListMcqQuery(req, res, next) {
     topicId: topic.value,
     subtopicId: subtopic.value,
     examBodyId: examBody.value,
-    difficulty:
-      diffRaw !== undefined && diffRaw !== null && String(diffRaw).trim() !== ''
-        ? String(diffRaw).trim()
-        : undefined,
+    difficulties,
     tags: parseTags(req.query.tags),
     reviewStatus:
       reviewRaw !== undefined && reviewRaw !== null && String(reviewRaw).trim() !== ''
@@ -125,6 +163,7 @@ export function validateListMcqQuery(req, res, next) {
       visRaw !== undefined && visRaw !== null && String(visRaw).trim() !== ''
         ? String(visRaw).trim()
         : undefined,
+    searchText,
     page,
     limit,
   };

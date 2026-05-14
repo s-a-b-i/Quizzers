@@ -130,7 +130,8 @@ export function Header() {
 
   const email = mongoUser?.email ?? user?.email ?? '';
   const displayRole = mongoUser?.role ?? role ?? '';
-  const isAdmin = displayRole === 'admin' || displayRole === 'superAdmin';
+  const canAccessAdminNav =
+    displayRole === 'admin' || displayRole === 'superAdmin' || displayRole === 'contentManager';
 
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -218,7 +219,7 @@ export function Header() {
             { href: '/bookmarks', text: 'Bookmarks' },
           ]}
         />
-        {isAdmin ? (
+        {canAccessAdminNav ? (
           <NavHoverDropdown
             label="Admin"
             active={adminNavActive}
@@ -277,7 +278,7 @@ export function Header() {
               >
                 Logout
               </button>
-              {isAdmin ? (
+              {canAccessAdminNav ? (
                 <>
                   <div className={DIVIDER} />
                   {ADMIN_NAV_ITEMS.map(({ href, text }) => (
@@ -332,7 +333,7 @@ export function Header() {
                 {text}
               </Link>
             ))}
-            {isAdmin ? (
+            {canAccessAdminNav ? (
               <>
                 <div className={DIVIDER} />
                 {ADMIN_NAV_ITEMS.map(({ href, text }) => (

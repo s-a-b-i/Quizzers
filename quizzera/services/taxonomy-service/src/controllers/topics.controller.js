@@ -11,8 +11,10 @@ export async function createTopic(req, res, next) {
 
 export async function listTopics(req, res, next) {
   try {
-    const { topics, total } = await topicService.listActiveTopics({
+    const includeInactive = req.taxonomyListIncludeInactive === true;
+    const { topics, total } = await topicService.listTopics({
       subjectId: req.query?.subjectId,
+      includeInactive,
     });
     res.json({ success: true, data: { topics, total } });
   } catch (err) {

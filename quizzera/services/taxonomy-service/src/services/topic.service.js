@@ -36,8 +36,14 @@ export async function createTopic(payload) {
   return doc.toObject();
 }
 
-export async function listActiveTopics({ subjectId }) {
-  const filter = { isActive: true };
+/**
+ * @param {{ subjectId?: string, includeInactive?: boolean }} opts
+ */
+export async function listTopics({ subjectId, includeInactive = false }) {
+  const filter = {};
+  if (!includeInactive) {
+    filter.isActive = true;
+  }
 
   if (subjectId !== undefined && subjectId !== null && String(subjectId).trim() !== '') {
     const id = String(subjectId).trim();

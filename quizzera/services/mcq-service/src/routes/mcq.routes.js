@@ -40,7 +40,7 @@ router.get('/:id/answer', verifyToken, checkEntitlement, getMcqAnswer);
 router.get('/:id', optionalListPrivilege, getMcqById);
 
 const adminContentRoles = ['admin', 'superAdmin', 'contentManager'];
-const patchMcqRoles = ['admin', 'contentManager'];
+const patchMcqRoles = ['admin', 'superAdmin', 'contentManager'];
 const deleteMcqRoles = ['admin', 'superAdmin'];
 
 router.post('/bulk', verifyToken, requireRole(adminContentRoles), validateBulkMcqs, bulkCreateMcqs);
