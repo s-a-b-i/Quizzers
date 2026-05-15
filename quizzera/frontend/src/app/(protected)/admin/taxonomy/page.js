@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiGet, apiPatch, apiPost } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { ActionConfirmModal } from '@/components/ui/ActionConfirmModal';
 import { PageLoader } from '@/components/ui/PageLoader';
 
 function ExplorerRow({
@@ -240,6 +241,9 @@ export default function AdminTaxonomyPage() {
   const [editing, setEditing] = useState(null);
   const [editDraft, setEditDraft] = useState('');
   const [busySlug, setBusySlug] = useState(null);
+
+  const [taxonomyDeactivate, setTaxonomyDeactivate] = useState(null);
+  const [taxonomyDeactivateBusy, setTaxonomyDeactivateBusy] = useState(false);
 
   const selectedBody = useMemo(
     () => examBodies.find((b) => b.slug === selectedBodySlug) ?? null,
@@ -523,35 +527,65 @@ export default function AdminTaxonomyPage() {
     setEditDraft('');
   }
 
-  async function handleActiveToggle(resource, slug, nextActive, onLocalListUpdate) {
-    const res = await patchBySlug(resource, slug, { isActive: nextActive });
-    if (!res) return;
+  async function handleActiveToggle(resource, slug, nextActive, onLocalListUpdate, itemName) {
     if (!nextActive) {
-      onLocalListUpdate((list) => list.filter((x) => x.slug !== slug));
-      if (resource === 'exam-bodies' && selectedBodySlug === slug) {
+      setTaxonomyDeactivate({
+        resource,
+        slug,
+        onLocalListUpdate,
+        name: itemName ?? slug,
+      });
+      return;
+    }
+    const res = await patchBySlug(resource, slug, { isActive: true });
+    if (!res) return;
+    await loadBodies();
+    if (selectedBody?._id) await loadTypes(selectedBody._id);
+    if (selectedBody?._id && selectedType?._id) {
+      await loadSubjects(selectedBody._id, selectedType._id);
+    }
+    if (selectedSubject?._id) await loadTopics(selectedSubject._id);
+    if (selectedTopic?._id) await loadSubtopics(selectedTopic._id);
+  }
+
+  async function confirmTaxonomyDeactivate() {
+    const p = taxonomyDeactivate;
+    if (!p) return;
+    setTaxonomyDeactivateBusy(true);
+    try {
+      const res = await patchBySlug(p.resource, p.slug, { isActive: false });
+      if (!res) return;
+      p.onLocalListUpdate((list) => list.filter((x) => x.slug !== p.slug));
+      if (p.resource === 'exam-bodies' && selectedBodySlug === p.slug) {
         setSelectedBodySlug(null);
       }
-      if (resource === 'exam-types' && selectedTypeSlug === slug) {
+      if (p.resource === 'exam-types' && selectedTypeSlug === p.slug) {
         setSelectedTypeSlug(null);
       }
-      if (resource === 'subjects' && selectedSubjectSlug === slug) {
+      if (p.resource === 'subjects' && selectedSubjectSlug === p.slug) {
         setSelectedSubjectSlug(null);
       }
-      if (resource === 'topics' && selectedTopicSlug === slug) {
+      if (p.resource === 'topics' && selectedTopicSlug === p.slug) {
         setSelectedTopicSlug(null);
       }
-      if (resource === 'subtopics' && selectedSubtopicSlug === slug) {
+      if (p.resource === 'subtopics' && selectedSubtopicSlug === p.slug) {
         setSelectedSubtopicSlug(null);
       }
-    } else {
-      await loadBodies();
-      if (selectedBody?._id) await loadTypes(selectedBody._id);
-      if (selectedBody?._id && selectedType?._id) {
-        await loadSubjects(selectedBody._id, selectedType._id);
-      }
-      if (selectedSubject?._id) await loadTopics(selectedSubject._id);
-      if (selectedTopic?._id) await loadSubtopics(selectedTopic._id);
+      setTaxonomyDeactivate(null);
+    } finally {
+      setTaxonomyDeactivateBusy(false);
     }
+  }
+
+  function taxonomyResourceLabel(resource) {
+    const map = {
+      'exam-bodies': 'Exam body',
+      'exam-types': 'Exam type',
+      subjects: 'Subject',
+      topics: 'Topic',
+      subtopics: 'Subtopic',
+    };
+    return map[resource] ?? 'Item';
   }
 
   async function createExamBody() {
@@ -808,7 +842,7 @@ export default function AdminTaxonomyPage() {
                 }}
                 active={b.isActive !== false}
                 onActiveChange={(checked) =>
-                  handleActiveToggle('exam-bodies', b.slug, checked, setExamBodies)
+                  handleActiveToggle('exam-bodies', b.slug, checked, setExamBodies, b.name)
                 }
                 busy={busySlug === b.slug}
                 disableActive={false}
@@ -884,7 +918,7 @@ export default function AdminTaxonomyPage() {
                     }}
                     active={t.isActive !== false}
                     onActiveChange={(checked) =>
-                      handleActiveToggle('exam-types', t.slug, checked, setExamTypes)
+                      handleActiveToggle('exam-types', t.slug, checked, setExamTypes, t.name)
                     }
                     busy={busySlug === t.slug}
                     disableActive={false}
@@ -962,7 +996,7 @@ export default function AdminTaxonomyPage() {
                     }}
                     active={s.isActive !== false}
                     onActiveChange={(checked) =>
-                      handleActiveToggle('subjects', s.slug, checked, setSubjects)
+                      handleActiveToggle('subjects', s.slug, checked, setSubjects, s.name)
                     }
                     busy={busySlug === s.slug}
                     disableActive={false}
@@ -1040,7 +1074,7 @@ export default function AdminTaxonomyPage() {
                     }}
                     active={t.isActive !== false}
                     onActiveChange={(checked) =>
-                      handleActiveToggle('topics', t.slug, checked, setTopics)
+                      handleActiveToggle('topics', t.slug, checked, setTopics, t.name)
                     }
                     busy={busySlug === t.slug}
                     disableActive={false}
@@ -1118,7 +1152,7 @@ export default function AdminTaxonomyPage() {
                     }}
                     active={st.isActive !== false}
                     onActiveChange={(checked) =>
-                      handleActiveToggle('subtopics', st.slug, checked, setSubtopics)
+                      handleActiveToggle('subtopics', st.slug, checked, setSubtopics, st.name)
                     }
                     busy={busySlug === st.slug}
                     disableActive={false}
@@ -1130,6 +1164,26 @@ export default function AdminTaxonomyPage() {
         </ColumnShell>
         </div>
       </div>
+
+      <ActionConfirmModal
+        open={taxonomyDeactivate !== null}
+        onClose={() => !taxonomyDeactivateBusy && setTaxonomyDeactivate(null)}
+        title={
+          taxonomyDeactivate
+            ? `Turn off ${taxonomyResourceLabel(taxonomyDeactivate.resource)}?`
+            : 'Turn off item?'
+        }
+        description={
+          taxonomyDeactivate
+            ? `“${taxonomyDeactivate.name}” will be marked inactive and hidden from active-only lists and pickers.`
+            : ''
+        }
+        confirmLabel="Turn off"
+        cancelLabel="Cancel"
+        tone="warning"
+        confirmBusy={taxonomyDeactivateBusy}
+        onConfirm={confirmTaxonomyDeactivate}
+      />
     </main>
   );
 }

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiGet, apiPatch } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { ActionConfirmModal } from '@/components/ui/ActionConfirmModal';
 import { PageLoader } from '@/components/ui/PageLoader';
 import { SectionLoader } from '@/components/ui/SectionLoader';
 
@@ -49,6 +50,9 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState('');
   const [fetching, setFetching] = useState(true);
   const [rowBusy, setRowBusy] = useState({});
+
+  const [userActionConfirm, setUserActionConfirm] = useState(null);
+  const [userActionBusy, setUserActionBusy] = useState(false);
 
   const setBusy = useCallback((userId, key, v) => {
     setRowBusy((prev) => ({ ...prev, [`${userId}:${key}`]: v }));
@@ -114,6 +118,22 @@ export default function AdminUsersPage() {
       await loadUsers();
     } finally {
       setBusy(userId, busyKey, false);
+    }
+  }
+
+  async function confirmUserAction() {
+    const p = userActionConfirm;
+    if (!p) return;
+    setUserActionBusy(true);
+    try {
+      if (p.kind === 'role') {
+        await patchUser(p.userId, { role: p.next }, 'role');
+      } else {
+        await patchUser(p.userId, { accountStatus: p.next }, 'status');
+      }
+      setUserActionConfirm(null);
+    } finally {
+      setUserActionBusy(false);
     }
   }
 
@@ -203,6 +223,15 @@ export default function AdminUsersPage() {
                               onChange={(e) => {
                                 const next = e.target.value;
                                 if (next === u.role) return;
+                                if (next === 'admin' || next === 'superAdmin') {
+                                  setUserActionConfirm({
+                                    kind: 'role',
+                                    userId: id,
+                                    next,
+                                    email: u.email ?? 'this user',
+                                  });
+                                  return;
+                                }
                                 patchUser(id, { role: next }, 'role');
                               }}
                             >
@@ -225,6 +254,15 @@ export default function AdminUsersPage() {
                               onChange={(e) => {
                                 const next = e.target.value;
                                 if (next === u.accountStatus) return;
+                                if (next === 'suspended' || next === 'inactive') {
+                                  setUserActionConfirm({
+                                    kind: 'status',
+                                    userId: id,
+                                    next,
+                                    email: u.email ?? 'this user',
+                                  });
+                                  return;
+                                }
                                 patchUser(id, { accountStatus: next }, 'status');
                               }}
                             >
@@ -250,6 +288,28 @@ export default function AdminUsersPage() {
           </div>
         )}
       </main>
+
+      <ActionConfirmModal
+        open={userActionConfirm !== null}
+        onClose={() => !userActionBusy && setUserActionConfirm(null)}
+        title={
+          userActionConfirm?.kind === 'role'
+            ? 'Grant administrator access?'
+            : 'Change account status?'
+        }
+        description={
+          userActionConfirm
+            ? userActionConfirm.kind === 'role'
+              ? `You are about to set ${userActionConfirm.email} to role “${userActionConfirm.next}”. They will have elevated permissions in the admin tools.`
+              : `You are about to set ${userActionConfirm.email} to “${userActionConfirm.next}”. They may be blocked from signing in until the status is restored.`
+            : ''
+        }
+        confirmLabel={userActionConfirm?.kind === 'role' ? 'Apply role' : 'Apply status'}
+        cancelLabel="Cancel"
+        tone="danger"
+        confirmBusy={userActionBusy}
+        onConfirm={confirmUserAction}
+      />
     </div>
   );
 }

@@ -16,6 +16,8 @@ import {
 } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { McqResultsEmpty, McqResultsError } from '@/components/mcq/McqPageStates';
+import { ActionAlertModal } from '@/components/ui/ActionAlertModal';
+import { ActionConfirmModal } from '@/components/ui/ActionConfirmModal';
 import { PageLoader } from '@/components/ui/PageLoader';
 import { Skeleton } from '@/components/ui/Skeleton';
 
@@ -598,6 +600,10 @@ export default function AdminMcqsPage() {
   const [bulkResult, setBulkResult] = useState(null);
   const bulkFileRef = useRef(null);
 
+  const [deactivateConfirmId, setDeactivateConfirmId] = useState(null);
+  const [deactivateBusy, setDeactivateBusy] = useState(false);
+  const [actionAlert, setActionAlert] = useState(null);
+
   const [subjects, setSubjects] = useState([]);
   const [topics, setTopics] = useState([]);
   const [subtopics, setSubtopics] = useState([]);
@@ -978,23 +984,31 @@ export default function AdminMcqsPage() {
     setEditError('');
   }
 
-  async function onDeactivate(id) {
-    if (
-      !window.confirm(
-        'Deactivate this MCQ? It will be hidden from public lists and practice flows.'
-      )
-    ) {
-      return;
-    }
+  function onDeactivate(id) {
+    setDeactivateConfirmId(String(id));
+  }
+
+  async function confirmDeactivateMcq() {
+    if (!deactivateConfirmId) return;
+    setDeactivateBusy(true);
     try {
-      const { data } = await apiDelete(`/api/mcqs/${encodeURIComponent(id)}`);
+      const { data } = await apiDelete(`/api/mcqs/${encodeURIComponent(deactivateConfirmId)}`);
       if (!data?.success) {
-        window.alert(data?.message || 'Delete failed.');
+        setActionAlert({
+          title: 'Could not deactivate',
+          message: data?.message || 'Delete failed.',
+        });
         return;
       }
+      setDeactivateConfirmId(null);
       await loadMcqs();
     } catch (e) {
-      window.alert(e?.response?.data?.message || e?.message || 'Delete failed.');
+      setActionAlert({
+        title: 'Could not deactivate',
+        message: e?.response?.data?.message || e?.message || 'Delete failed.',
+      });
+    } finally {
+      setDeactivateBusy(false);
     }
   }
 
@@ -1489,6 +1503,25 @@ export default function AdminMcqsPage() {
           </div>
         </div>
       ) : null}
+
+      <ActionConfirmModal
+        open={deactivateConfirmId !== null}
+        onClose={() => !deactivateBusy && setDeactivateConfirmId(null)}
+        title="Deactivate this MCQ?"
+        description="It will be hidden from public lists, practice, and search. You can still see it in this admin table when filters allow inactive rows."
+        confirmLabel="Deactivate"
+        cancelLabel="Cancel"
+        tone="danger"
+        confirmBusy={deactivateBusy}
+        onConfirm={confirmDeactivateMcq}
+      />
+
+      <ActionAlertModal
+        open={actionAlert !== null}
+        onClose={() => setActionAlert(null)}
+        title={actionAlert?.title ?? 'Something went wrong'}
+        message={actionAlert?.message ?? ''}
+      />
     </div>
   );
 }
