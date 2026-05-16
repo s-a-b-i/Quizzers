@@ -2,7 +2,10 @@ import { Router } from 'express';
 import {
   bulkCreateMcqs,
   createMcq,
+  fetchMcqAnswersForScoring,
   fetchMcqsForExam,
+  fetchMcqsForResultReview,
+  fetchMcqsForWeakArea,
   getMcqAnswer,
   getMcqById,
   listBookmarks,
@@ -13,7 +16,9 @@ import {
   updateMcq,
 } from '../controllers/mcq.controller.js';
 import { requireInternalSecret } from '../middleware/requireInternalSecret.js';
+import { validateFetchMcqAnswersForScoring } from '../middleware/validateFetchMcqAnswersForScoring.js';
 import { validateFetchMcqsForExam } from '../middleware/validateFetchMcqsForExam.js';
+import { validateFetchMcqsForWeakArea } from '../middleware/validateFetchMcqsForWeakArea.js';
 import { checkEntitlement } from '../middleware/checkEntitlement.js';
 import { optionalListPrivilege } from '../middleware/optionalListPrivilege.js';
 import { requireRole } from '../middleware/requireRole.js';
@@ -32,6 +37,24 @@ router.post(
   requireInternalSecret,
   validateFetchMcqsForExam,
   fetchMcqsForExam
+);
+router.post(
+  '/internal/answers-for-scoring',
+  requireInternalSecret,
+  validateFetchMcqAnswersForScoring,
+  fetchMcqAnswersForScoring
+);
+router.post(
+  '/internal/fetch-for-result-review',
+  requireInternalSecret,
+  validateFetchMcqAnswersForScoring,
+  fetchMcqsForResultReview
+);
+router.post(
+  '/internal/fetch-for-weak-area',
+  requireInternalSecret,
+  validateFetchMcqsForWeakArea,
+  fetchMcqsForWeakArea
 );
 router.get('/bookmarks', verifyToken, checkEntitlement, validateBookmarksQuery, listBookmarks);
 router.get('/', optionalListPrivilege, validateListMcqQuery, listMcqs);

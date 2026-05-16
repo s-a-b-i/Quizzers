@@ -1,0 +1,286 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black}
+
+\title{Quizzera Exam System\\Technical Flow \& Hands-On Test Guide}
+\author{Architecture reference + step-by-step verification (from codebase)}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Purpose and scope}
+
+This document has two parts: (1)~\textbf{where and how to test} the full exam journey in a browser, with questions and answers you can use to verify behavior; (2)~technical reference for routes, data model, session lifecycle, and security.
+
+Exams depend on the \textbf{MCQ bank} and \textbf{taxonomy}: questions are drawn from approved public MCQs matching exam \texttt{subtopicIds} via internal MCQ-service calls. Read \texttt{mcq-complete-flow.tex} for MCQ authoring and browse flows.
+
+\subsection{Who creates exams (important)}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Who} & \textbf{How} \\
+\midrule
+\textbf{Admin / contentManager} & Create \textbf{predefined} exam templates in \texttt{/admin/exams} (title, type, taxonomy mapping, difficulty, question count, duration, passing score, visibility). \\
+\textbf{Platform (server)} & Generates \texttt{dynamic}, \texttt{weak-area}, and similar exams from student performance and onboarding---\textbf{not} via a student configuration UI. \\
+\textbf{Student} & Only clicks \textbf{Start Exam} or \textbf{Start Drill}. No subject/topic pickers, no difficulty toggles, no question-count sliders. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Start here: where to test the full exam flow}
+
+\subsection{What must be running}
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{MongoDB} reachable from \texttt{exam-service}, \texttt{mcq-service}, and \texttt{taxonomy-service} (each has its own \texttt{MONGO\_URI} in \texttt{.env}).
+  \item \textbf{Taxonomy service} --- seeded data with exam bodies, subjects, topics, and subtopics (IDs are required on exams and MCQs).
+  \item \textbf{MCQ service} --- enough \textbf{approved}, \textbf{public}, \textbf{active} MCQs under the same subtopics as your exams (run MCQ seed or create via \texttt{/admin/mcqs}).
+  \item \textbf{Exam service} (\texttt{quizzera/services/exam-service}, default \texttt{PORT=3005}) --- \texttt{INTERNAL\_SECRET} must match MCQ service; \texttt{MCQ\_SERVICE\_URL}, \texttt{TAXONOMY\_SERVICE\_URL}, and \texttt{USER\_SERVICE\_URL} must point at running instances.
+  \item \textbf{User service} --- onboarding preferences (\texttt{preferences.onboarding.targetExamId}) used for recommended exams on \texttt{GET /api/exams?recommended=true}.
+  \item \textbf{Auth service} and \textbf{Gateway} (\texttt{quizzera/gateway}, default \texttt{PORT=3000}).
+  \item \textbf{Next.js frontend} (\texttt{quizzera/frontend}) --- \texttt{npm run dev}. Rewrites \texttt{/api/*} to \texttt{NEXT\_PUBLIC\_GATEWAY\_URL} (default \texttt{http://localhost:3000}).
+\end{enumerate}
+
+\textbf{Rule of thumb:} open the app at whatever host the frontend prints (e.g.\ \texttt{http://localhost:3006}). All exam UI tests go through that origin so cookies/tokens and \texttt{/api/exams} rewrites work.
+
+\subsection{One-time data setup (recommended)}
+
+Run seeds in this order from the repo:
+
+\begin{lstlisting}
+cd services/taxonomy-service && node scripts/seed.mjs
+cd services/mcq-service     && node scripts/seed.mjs
+cd services/exam-service    && node scripts/seed.mjs
+\end{lstlisting}
+
+The exam seed creates three \textbf{public} predefined exams (mock, topic-quiz, timed-practice) tagged \texttt{seed}. Alternatively, create exams in \texttt{/admin/exams} with at least one \textbf{subtopic} selected so \texttt{POST .../start} can draw MCQs.
+
+If start fails with ``Could not draw any questions'', add more approved public MCQs in those subtopics or re-run the MCQ seed.
+
+\subsection{Accounts and roles (what to log in as)}
+
+\begin{description}[style=nextline]
+  \item[Student / mentor / etc.] \texttt{/exams}, \texttt{/exams/weak-area}, session, results, review, \texttt{/results}, \texttt{/dashboard}. Must not be \texttt{guest} (\texttt{checkEntitlement} on start, progress, submit, weak-area generate).
+  \item[\texttt{admin} or \texttt{superAdmin}] \texttt{/admin/exams} (create, edit, deactivate), plus \texttt{GET /api/exams/admin/sessions}.
+  \item[\texttt{contentManager}] \texttt{/admin/exams} --- create exams only; cannot edit or deactivate.
+\end{description}
+
+Complete onboarding once so \texttt{preferences.onboarding.targetExamId} is stored (improves the Recommended section on \texttt{/exams}).
+
+\subsection{Recommended test order (do this sequence)}
+
+Follow this order once; it mirrors the real learner lifecycle.
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Prerequisites} --- Stack running; taxonomy $\rightarrow$ MCQ $\rightarrow$ exam seeds (or admin-created exams). \texttt{INTERNAL\_SECRET} identical on exam-service and mcq-service. Restart exam-service after backend changes.
+  \item \textbf{Admin templates (optional)} --- Log in as admin. Open \texttt{/admin/exams}. Create a mock exam with title, \texttt{mock} type, exam body/type, subjects/topics/\textbf{subtopics}, question count, duration, \texttt{public} visibility, active. Expected: row in table; exam appears under Mock Exams for students.
+  \item \textbf{Browse \& start} --- Log in as student. Open \texttt{/exams}. Expected: three sections --- \textbf{Recommended for you} (up to 3 cards, \texttt{RECOMMENDED} label), \textbf{Mock exams}, \textbf{Topic quizzes}. Click \textbf{Start Exam} on any card. Expected: \texttt{POST /api/exams/:examId/start} then redirect to \texttt{/exams/session/:sessionId} (\textbf{no} instructions page, \textbf{no} student form).
+  \item \textbf{Take exam} --- Answer questions; confirm navigator and countdown timer. Wait $\sim$30\,s: \texttt{PATCH .../progress}. Reload: answers restore from server and/or \texttt{localStorage} (\texttt{quizzera-exam-session-*}).
+  \item \textbf{Submit} --- \textbf{Submit} + confirm. Expected: \texttt{/exams/results/:sessionId} with score, stats, topic bars, weak areas, accordion review, \textbf{Review All Questions} link, \textbf{Share Result} (clipboard).
+  \item \textbf{Full review mode} --- From results, open \texttt{/exams/review/:sessionId}. Expected: read-only session layout; green/black = correct, gray = wrong, light gray = unattempted; explanations visible; \textbf{Back to Results}.
+  \item \textbf{History} --- \texttt{/results}: table with score, date, View/Resume. Dashboard \texttt{/results} section shows last 3 attempts.
+  \item \textbf{Weak area drill} --- After a submitted exam with weak topics, open \texttt{/exams/weak-area}. Expected: read-only topic pills + \textbf{Start Drill} $\rightarrow$ \texttt{POST /api/exams/weak-area/generate} $\rightarrow$ session. Empty state if no weak areas yet.
+  \item \textbf{Resume} --- Leave an exam in progress; \texttt{/results} shows \textbf{Resume}. Or \texttt{POST .../start} again on same exam reuses non-expired session.
+  \item \textbf{Dashboard} --- \texttt{/dashboard}: Quick Start cards (Mock, Weak Area, My Results); Recent Results list (last 3).
+  \item \textbf{No student builder} --- \texttt{/exams/dynamic} redirects to \texttt{/exams}. There is no multi-step exam configuration UI for students.
+  \item \textbf{Error UX} --- Stop exam-service; reload \texttt{/exams}. Expected: \textbf{Something went wrong.} + \textbf{Retry} (\texttt{ExamPageError}).
+\end{enumerate}
+
+\subsection{Quick URL map (where each flow lives)}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{URL path} & \textbf{What to test here} \\
+\midrule
+\texttt{/dashboard} & Quick Start cards; Recent Results (last 3 sessions) \\
+\texttt{/exams} & Recommended + Mock + Topic quiz sections; Start Exam $\rightarrow$ session directly \\
+\texttt{/exams/weak-area} & Weak topic pills (read-only); Start Drill \\
+\texttt{/exams/dynamic} & Redirects to \texttt{/exams} (deprecated for students) \\
+\texttt{/exams/session/\{sessionId\}} & Timer, navigator, answers, auto-save, submit \\
+\texttt{/exams/results/\{sessionId\}} & Score, review accordion, Share, Review All Questions \\
+\texttt{/exams/review/\{sessionId\}} & Post-submit question-by-question review (read-only) \\
+\texttt{/results} & My history table, View / Resume \\
+\texttt{/admin/exams} & Admin: create/edit/deactivate exam templates \\
+\texttt{/exams/\{examId\}} & Instructions page (optional; Try Again from results still links here) \\
+\texttt{/exams/\{examId\}/leaderboard} & Leaderboard skeleton + empty/API (if backend added later) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Questions and answers (testing checklist)}
+
+\begin{description}[style=nextline, leftmargin=0pt]
+
+\item[Q1: Where do I \emph{start} if I want to test everything?]
+\textbf{A:} Run seeds (or create exams in \texttt{/admin/exams}), log in as student, open \texttt{/exams}, click \textbf{Start Exam}, finish session $\rightarrow$ results $\rightarrow$ \texttt{/results}. Then test \texttt{/exams/weak-area} and \texttt{/dashboard}.
+
+\item[Q2: Can students build their own exams?]
+\textbf{A:} \textbf{No.} Students never configure subject, topics, difficulty, or duration. \texttt{/exams/dynamic} redirects to \texttt{/exams}. Only admins configure templates at \texttt{/admin/exams}. The platform generates weak-area (and API-only dynamic) exams server-side.
+
+\item[Q3: Why does \texttt{POST .../start} fail with no questions?]
+\textbf{A:} The exam template needs non-empty \texttt{subtopicIds} (set in admin) and enough approved public MCQs in those subtopics (\texttt{POST /mcqs/internal/fetch-for-exam}).
+
+\item[Q4: Why is Recommended empty?]
+\textbf{A:} \texttt{GET /api/exams?recommended=true} matches onboarding \texttt{targetExamId} to a taxonomy exam body slug/name, then returns up to 3 public exams. Complete onboarding, ensure seed/admin exams share that exam body, or fallback returns latest public mock/topic-style exams.
+
+\item[Q5: Why does my exam not appear under Mock or Topic quiz?]
+\textbf{A:} List filters by \texttt{examType}. Exam must be \texttt{visibilityStatus=public}, \texttt{isActive=true}. Platform-generated types (\texttt{dynamic}, \texttt{weak-area}) are usually \texttt{hidden}.
+
+\item[Q6: Where are correct answers shown during the exam?]
+\textbf{A:} Nowhere in the take UI. They appear after submit on results and on \texttt{/exams/review/:sessionId}.
+
+\item[Q7: How is pass/fail determined?]
+\textbf{A:} \texttt{score = round(correct/total*100)} vs exam \texttt{passingScore} (default 50). Stored on session and \texttt{ExamResult.passed}. History UI uses $\geq$50\% for the Passed pill unless you align per-exam \texttt{passingScore}.
+
+\item[Q8: How do I test weak-area drill?]
+\textbf{A:} Submit at least one exam with topics below 50\% accuracy. Open \texttt{/exams/weak-area}; pills come from \texttt{weakAreas} on your latest submitted session in history. \textbf{Start Drill} calls \texttt{POST /api/exams/weak-area/generate} (uses weak topics from last 3 \texttt{ExamResult} rows on the server).
+
+\item[Q9: How do I test admin exams?]
+\textbf{A:} Log in as admin. \texttt{/admin/exams}: \textbf{+ Add exam}, fill taxonomy + subtopics, save. Deactivate removes from student lists. contentManager can create but not edit/deactivate.
+
+\item[Q10: How do I retest after an API error?]
+\textbf{A:} Use \textbf{Retry} (\texttt{ExamPageError} / \texttt{McqResultsError}) on \texttt{/exams}, \texttt{/results}, \texttt{/exams/weak-area}, \texttt{/dashboard}, session, results, review, and admin pages.
+
+\end{description}
+
+\newpage
+
+\section{Technical reference: high-level architecture}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Frontend}: Next.js under \texttt{src/app/(protected)/}; \texttt{/api/*} rewrites to gateway.
+  \item \textbf{Gateway}: \texttt{/api/exams} $\rightarrow$ exam-service \texttt{/exams}; \texttt{/api/exams/internal/*} blocked (404).
+  \item \textbf{Exam service} (port \texttt{3005}): \texttt{Exam}, \texttt{ExamSession}, \texttt{ExamResult}; MCQ draw, scoring, recommendations.
+  \item \textbf{User service}: Profile + \texttt{preferences.onboarding} for recommended exam list.
+  \item \textbf{MCQ service}: Internal fetch/scoring/review/weak-area (secret header).
+  \item \textbf{Auth}: Firebase Bearer; exam-service resolves user for ownership and roles.
+\end{itemize}
+
+\section{Technical reference: gateway routing (exam)}
+
+\begin{itemize}[leftmargin=*]
+  \item Browser: \texttt{GET /api/exams}, \texttt{POST /api/exams/:examId/start}, etc.
+  \item Upstream: \texttt{\{EXAM\_SERVICE\_URL\}/exams/...}
+  \item \texttt{/api/exams/internal/*}: not proxied publicly.
+\end{itemize}
+
+\section{Technical reference: listing exams (\texttt{GET /exams})}
+
+\subsection{Public list (default)}
+
+Filter: \texttt{visibilityStatus = public}, \texttt{isActive = true}. Query params: \texttt{examType}, \texttt{examBodyId}, \texttt{examTypeId}, \texttt{difficulty}, \texttt{tags}, \texttt{page}, \texttt{limit}.
+
+\subsection{Recommended (\texttt{recommended=true})}
+
+Requires Bearer token (user resolved via \texttt{optionalListPrivilege}). Loads \texttt{GET /users/me}, reads \texttt{preferences.onboarding.targetExamId}, maps to taxonomy exam body, returns up to \texttt{limit} public exams of types mock/topic-quiz/timed-practice/sectional/syllabus-weighted. Fallback: latest public exams if no body match.
+
+\subsection{Privileged list}
+
+\texttt{admin}, \texttt{superAdmin}, or \texttt{contentManager}: may list hidden/inactive exams (used by \texttt{/admin/exams}).
+
+\section{Technical reference: route map (\texttt{exam-service})}
+
+\begin{longtable}{@{}p{0.42\textwidth}p{0.52\textwidth}@{}}
+\toprule
+\textbf{Route} & \textbf{Behavior / middleware} \\
+\midrule
+\endhead
+\texttt{GET /exams/} & \texttt{optionalListPrivilege}, \texttt{validateListExamQuery}. Supports \texttt{recommended=true}. \\
+\texttt{POST /exams/} & \texttt{admin} or \texttt{contentManager}; create template. \\
+\texttt{PATCH /exams/:examId} & \texttt{admin}/\texttt{superAdmin}; update template. \\
+\texttt{DELETE /exams/:examId} & \texttt{admin}/\texttt{superAdmin}; soft delete. \\
+\texttt{POST /exams/:examId/start} & \texttt{verifyToken}, \texttt{checkEntitlement}; draw MCQs + session (or resume). \\
+\texttt{POST /exams/dynamic/generate} & Platform-only: hidden \texttt{dynamic} exam + session (no student UI). \\
+\texttt{POST /exams/weak-area/generate} & Platform-only: weak-area exam + session; UI at \texttt{/exams/weak-area}. \\
+\texttt{GET /exams/my/history} & User sessions; includes \texttt{weakAreas} on each row. \\
+\texttt{GET /exams/sessions/:id} & Active session + practice MCQs (no answers). \\
+\texttt{PATCH .../progress} & Merge answers. \\
+\texttt{POST .../submit} & Score + \texttt{ExamResult}. \\
+\texttt{GET .../result} & Full review payload for results + review pages. \\
+\bottomrule
+\end{longtable}
+
+\section{Technical reference: frontend flows (student)}
+
+\subsection{Exam selection (\texttt{/exams})}
+
+Three parallel fetches:
+\begin{itemize}[nosep]
+  \item \texttt{GET /api/exams?recommended=true\&limit=3}
+  \item \texttt{GET /api/exams?examType=mock\&limit=100}
+  \item \texttt{GET /api/exams?examType=topic-quiz\&limit=100}
+\end{itemize}
+Each card: \texttt{ExamStartCard} calls \texttt{POST /api/exams/:examId/start} $\rightarrow$ \texttt{/exams/session/:sessionId}. Skeleton: 6 cards per section while loading. Error: \texttt{ExamPageError}.
+
+\subsection{Weak area drill (\texttt{/exams/weak-area})}
+
+\texttt{GET /api/exams/my/history} $\rightarrow$ weak topic pills (read-only). \texttt{POST /api/exams/weak-area/generate} $\rightarrow$ session. No student configuration.
+
+\subsection{Session, results, review, history}
+
+Unchanged core APIs; see prior sections. \texttt{/exams/review/:sessionId} uses same result payload as results page with navigator UX.
+
+\subsection{Dashboard (\texttt{/dashboard})}
+
+Quick Start: \texttt{/exams}, \texttt{/exams/weak-area}, \texttt{/results}. Recent Results: \texttt{GET /api/exams/my/history?limit=3}.
+
+\section{Technical reference: admin (\texttt{/admin/exams})}
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{GET /api/exams?limit=200} with privileged token lists all templates.
+  \item Drawer form: title, description, examType, examBodyId, examTypeId, subject/topic/subtopic checkboxes, difficulty, totalQuestions, durationMinutes, passingScore, visibilityStatus, isActive.
+  \item \texttt{POST /api/exams} create; \texttt{PATCH /api/exams/:id} edit (admin only); \texttt{DELETE} deactivate (admin only).
+  \item \textbf{Subtopics are required} for students to start successfully.
+\end{itemize}
+
+\section{Technical reference: shared UI components}
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{src/components/exam/ExamPageStates.js} --- skeletons (cards, table rows, pills, taxonomy form, leaderboard rows) and \texttt{ExamPageError} (``Something went wrong.'' + Retry).
+  \item \texttt{src/components/exam/ExamStartCard.js} --- student card with direct start.
+\end{itemize}
+
+\section{Technical reference: security summary}
+
+\begin{itemize}[leftmargin=*]
+  \item Students cannot list hidden exams or create templates without role.
+  \item Correct answers only after submit (results/review endpoints).
+  \item Internal MCQ routes not on public gateway.
+  \item \texttt{INTERNAL\_SECRET} aligned across exam-service and mcq-service.
+\end{itemize}
+
+\section{Suggested further reading (in-repo)}
+
+\begin{itemize}[nosep]
+  \item \texttt{docs/mcq-complete-flow.tex} --- MCQ + taxonomy prerequisites.
+  \item \texttt{services/exam-service/scripts/seed.mjs} --- sample public exams.
+  \item \texttt{services/exam-service/src/services/exam.service.js} --- list + recommended logic.
+  \item \texttt{services/exam-service/src/services/userClient.service.js} --- onboarding profile fetch.
+  \item \texttt{frontend/src/app/(protected)/admin/exams/page.js} --- admin templates.
+  \item \texttt{frontend/src/app/(protected)/exams/page.js} --- student exam selection.
+\end{itemize}
+
+\end{document}

@@ -2,7 +2,10 @@ import './load-env.js';
 import express from 'express';
 import { connectDatabase } from './config/database.js';
 import './config/firebase.js';
+import './models/User.js';
 import './models/Exam.js';
+import './models/ExamSession.js';
+import './models/ExamResult.js';
 
 import healthRoutes from './routes/health.routes.js';
 import examRoutes from './routes/exam.routes.js';

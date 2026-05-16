@@ -7,7 +7,7 @@
  * 2 topics per subject → 2 subtopics per topic.
  *
  * Also writes `scripts/taxonomy-ids-for-mcq.json` (placements with subject/topic/subtopic
- * and exam body/type ids) for `mcq-service/scripts/seed.mjs`.
+ * and exam body/type ids) for `mcq-service/scripts/seed.mjs` and `exam-service/scripts/seed.mjs`.
  */
 import path from 'node:path';
 import { writeFile } from 'node:fs/promises';

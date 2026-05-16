@@ -9,6 +9,33 @@ export async function fetchMcqsForExam(req, res, next) {
   }
 }
 
+export async function fetchMcqAnswersForScoring(req, res, next) {
+  try {
+    const { mcqs } = await mcqService.fetchMcqAnswersForScoring(req.answersForScoringPayload);
+    res.json({ success: true, data: { mcqs } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function fetchMcqsForResultReview(req, res, next) {
+  try {
+    const { mcqs } = await mcqService.fetchMcqsForResultReview(req.answersForScoringPayload);
+    res.json({ success: true, data: { mcqs } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function fetchMcqsForWeakArea(req, res, next) {
+  try {
+    const { mcqs } = await mcqService.fetchMcqsForWeakArea(req.fetchForWeakAreaPayload);
+    res.json({ success: true, data: { mcqs } });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function softDeleteMcq(req, res, next) {
   try {
     const result = await mcqService.softDeleteMcq(req.params.id);

@@ -22,6 +22,17 @@ app.use('/api/mcqs/internal', (_req, res) => {
 });
 
 /**
+ * Exam internal routes are not proxied. `/api/exams/internal/*` must not reach exam-service
+ * through the gateway (services call each other directly with internal secrets).
+ */
+app.use('/api/exams/internal', (_req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Not found.',
+  });
+});
+
+/**
  * Mount targets strip the gateway prefix; pathRewrite maps the remainder onto each
  * service’s expected base path (e.g. auth-service serves `/auth`).
  *
@@ -49,6 +60,7 @@ const routes = [
     target: process.env.MCQ_SERVICE_URL ?? 'http://localhost:3004',
     backendPrefix: '/mcqs',
   },
+  // GET http://localhost:3000/api/exams → GET http://localhost:3005/exams
   {
     mount: '/api/exams',
     target: process.env.EXAM_SERVICE_URL ?? 'http://localhost:3005',

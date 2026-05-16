@@ -366,6 +366,69 @@ export async function fetchMcqsForExam({ subtopicObjectIds, difficulty, count })
 }
 
 /**
+ * Internal: random MCQs for weak-area exams (filters by topicId).
+ * @param {{ topicObjectIds: import('mongoose').Types.ObjectId[], difficulty?: string, count: number }} opts
+ */
+export async function fetchMcqsForWeakArea({ topicObjectIds, difficulty, count }) {
+  const match = {
+    isActive: true,
+    reviewStatus: 'approved',
+    visibilityStatus: 'public',
+    topicId: { $in: topicObjectIds },
+  };
+  if (difficulty) {
+    match.difficulty = difficulty;
+  }
+
+  const mcqs = await MCQ.aggregate([{ $match: match }, { $sample: { size: count } }]);
+
+  return { mcqs };
+}
+
+/**
+ * Internal: correct answers and topic ids for exam scoring.
+ * @param {{ mcqObjectIds: import('mongoose').Types.ObjectId[] }} opts
+ */
+export async function fetchMcqAnswersForScoring({ mcqObjectIds }) {
+  const rows = await MCQ.find({ _id: { $in: mcqObjectIds } })
+    .select('_id correctAnswer topicId')
+    .lean();
+
+  const mcqs = rows.map((row) => ({
+    _id: row._id,
+    correctAnswer: String(row.correctAnswer ?? '').trim(),
+    topicId: row.topicId,
+  }));
+
+  return { mcqs };
+}
+
+/**
+ * Internal: full MCQ content for post-submit result review (includes answers).
+ * @param {{ mcqObjectIds: import('mongoose').Types.ObjectId[] }} opts
+ */
+export async function fetchMcqsForResultReview({ mcqObjectIds }) {
+  const rows = await MCQ.find({ _id: { $in: mcqObjectIds } })
+    .select('_id questionStem options correctAnswer explanation')
+    .lean();
+
+  const mcqs = rows.map((row) => ({
+    _id: row._id,
+    questionStem: String(row.questionStem ?? ''),
+    options: Array.isArray(row.options)
+      ? row.options.map((o) => ({
+          label: String(o?.label ?? '').trim(),
+          text: String(o?.text ?? '').trim(),
+        }))
+      : [],
+    correctAnswer: String(row.correctAnswer ?? '').trim(),
+    explanation: String(row.explanation ?? ''),
+  }));
+
+  return { mcqs };
+}
+
+/**
  * PATCH /mcqs/:id — merge patch with existing doc, validate, save. `createdBy` unchanged.
  * When `patch.reviewStatus` becomes `approved` and visibility is still `hidden` (there is no `draft`
  * visibility in this schema; treat prompt “draft” as `hidden`), sets `visibilityStatus` to `public`.

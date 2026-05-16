@@ -112,6 +112,7 @@ const MOBILE_FLAT_LINKS = [
   { href: '/mcqs', text: 'Practice MCQs' },
   { href: '/performance', text: 'My Performance' },
   { href: '/exams', text: 'Take an Exam' },
+  { href: '/exams/weak-area', text: 'Weak Area Drill' },
   { href: '/results', text: 'My Results' },
   { href: '/resources', text: 'Study Materials' },
   { href: '/bookmarks', text: 'Bookmarks' },
@@ -121,6 +122,7 @@ const ADMIN_NAV_ITEMS = [
   { href: '/admin/users', text: 'Admin: Users' },
   { href: '/admin/taxonomy', text: 'Admin: Taxonomy' },
   { href: '/admin/mcqs', text: 'Admin: MCQ Bank' },
+  { href: '/admin/exams', text: 'Admin: Exams' },
 ];
 
 export function Header() {
@@ -139,12 +141,16 @@ export function Header() {
   const avatarWrapRef = useRef(null);
 
   const practiceActive = pathname === '/mcqs' || pathname === '/performance';
-  const examsActive = pathname === '/exams' || pathname === '/results';
+  const examsActive =
+    pathname === '/exams' ||
+    pathname === '/results' ||
+    pathname.startsWith('/exams/');
   const resourcesActive = pathname === '/resources' || pathname === '/bookmarks';
   const adminNavActive =
     pathname === '/admin/users' ||
     pathname === '/admin/taxonomy' ||
-    pathname === '/admin/mcqs';
+    pathname === '/admin/mcqs' ||
+    pathname === '/admin/exams';
 
   const initials = useMemo(() => emailInitials(email), [email]);
 
@@ -208,6 +214,7 @@ export function Header() {
           active={examsActive}
           items={[
             { href: '/exams', text: 'Take an Exam' },
+            { href: '/exams/weak-area', text: 'Weak Area Drill' },
             { href: '/results', text: 'My Results' },
           ]}
         />
